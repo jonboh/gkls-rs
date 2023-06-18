@@ -1,7 +1,11 @@
 use std::f64::consts::PI;
 
 use itertools::izip;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
+
+pub mod ranf;
+mod c_gkls;
 
 pub struct Options {
     max_value: f64,
@@ -75,17 +79,17 @@ pub struct Problem {
     domain: Domain,
     dim: usize,
     num_minima: usize,
-    global_dist: f64,
-    global_radius: f64,
-    global_value: f64,
+    _global_dist: f64,
+    _global_radius: f64,
+    _global_value: f64,
     delta: f64,
     minima: Minima,
-    glob: GlobalMinima,
+    _glob: GlobalMinima,
 }
 
 impl Default for Problem {
     fn default() -> Self {
-        let nf = 0;
+        let nf = 1;
         let dim = 2;
         let num_minima = 10;
         let global_value = -1.0;
@@ -148,7 +152,6 @@ impl Problem {
         global_radius: f64,
         global_dist: f64,
     ) -> Result<(), GKLSError> {
-        // NOTE: maybe not pub, or removed
         if dim <= 1 {
             return Err(GKLSError::Dim);
         }
@@ -190,7 +193,9 @@ impl Problem {
         global_dist: f64,
         global_radius: f64,
         options: &Options,
+        rng: ranf::Ranf,
     ) -> Result<(), GKLSError> {
+        let mut rng = rng;
         let mut temp_min: f64;
         let mut temp_d1: f64;
         let mut temp_d2: f64;
@@ -245,12 +250,12 @@ impl Problem {
         // Set the local minima values f(i) of test functions
         minima.peak[0] = 0.0;
         minima.peak[1] = 0.0;
-        let mut rng = rand::thread_rng();
         for i in 2..num_minima {
+            let random = rng.gen::<f64>();
             temp_d1 = norm(&minima.local_min[0], &minima.local_min[i]);
             temp_min = (minima.rho[i] - temp_d1).powi(2) + minima.f[0];
-            temp_d1 = (1.0 + rng.gen::<f64>()) * minima.rho[i];
-            temp_d2 = rng.gen::<f64>() * (temp_min - global_value);
+            temp_d1 = (1.0 + random) * minima.rho[i];
+            temp_d2 = random * (temp_min - global_value);
             if temp_d2 < temp_d1 {
                 temp_d1 = temp_d2;
             }
@@ -309,31 +314,33 @@ impl Problem {
             peak: vec![0.0; num_minima],
             rho: vec![0.0; num_minima],
         };
-        let mut rng = rand::thread_rng();
+        let seed = (nf - 1) + (num_minima - 1) * 100 + dim * 1000000;
+        let mut rng = ranf::Ranf::new(100, 37, 70, 1009, 1009, seed.try_into().unwrap());
         for i in 0..dim {
-            minima.local_min[0][i] =
-                domain.left[i] + rng.gen::<f64>() * (domain.right[i] - domain.left[i]);
+            let r = rng.gen::<f64>();
+            minima.local_min[0][i] = domain.left[i] + r * (domain.right[i] - domain.left[i]);
         }
+        rng.reset();
         minima.f[0] = options.paraboloid_min;
-        minima.local_min[1][0] =
-            minima.local_min[0][0] + global_dist * f64::cos(PI * rng.gen::<f64>());
+        let w_phi = PI * rng.gen::<f64>();
+        minima.local_min[1][0] = minima.local_min[0][0] + global_dist * f64::cos(w_phi);
         if minima.local_min[1][0] > domain.right[0] - options.precision
             || minima.local_min[1][0] < domain.left[0] + options.precision
         {
-            minima.local_min[1][0] =
-                minima.local_min[0][0] - global_dist * f64::cos(PI * rng.gen::<f64>());
+            minima.local_min[1][0] = minima.local_min[0][0] - global_dist * f64::cos(w_phi);
         }
-        sin_phi = f64::sin(PI * rng.gen::<f64>());
+        sin_phi = f64::sin(w_phi);
         for j in 1..dim - 1 {
-            minima.local_min[1][j] = minima.local_min[0][j]
-                + global_dist * f64::cos(2.0 * PI * rng.gen::<f64>()) * sin_phi;
+            let w_2 = PI * rng.gen::<f64>();
+            minima.local_min[1][j] =
+                minima.local_min[0][j] + global_dist * f64::cos(2.0 * w_2) * sin_phi;
             if minima.local_min[1][j] > domain.right[j] - options.precision
                 || minima.local_min[1][j] < domain.left[j] + options.precision
             {
-                minima.local_min[1][j] = minima.local_min[0][j]
-                    - global_dist * f64::cos(2.0 * PI * rng.gen::<f64>()) * sin_phi;
+                minima.local_min[1][j] =
+                    minima.local_min[0][j] - global_dist * f64::cos(2.0 * w_2) * sin_phi;
             }
-            sin_phi *= f64::sin(2.0 * PI * rng.gen::<f64>());
+            sin_phi *= f64::sin(2.0 * w_2);
         }
         minima.local_min[1][dim - 1] = minima.local_min[0][dim - 1] + global_dist * sin_phi;
         if minima.local_min[1][dim - 1] > domain.right[dim - 1] - options.precision
@@ -347,19 +354,20 @@ impl Problem {
         }
         minima.w_rho[1] = 1.0;
         let delta = options.delta_max_value * rng.gen::<f64>();
-        let mut i = 2;
         while let CoincidenceCondition::LocalMinCoincidence
         | CoincidenceCondition::ParabolaMinCoincidence =
             coincidence_check(&minima, num_minima, options.precision)
         {
+            let mut i = 2;
             while i < num_minima {
                 loop {
+                    rng.reset();
                     for j in 0..dim {
                         minima.local_min[i][j] =
                             domain.left[j] + rng.gen::<f64>() * (domain.right[j] - domain.left[j]);
                     }
-                    if global_radius + gap - norm(&minima.local_min[i], &minima.local_min[1])
-                        > options.precision
+                    if (global_radius + gap) - norm(&minima.local_min[i], &minima.local_min[1])
+                        < options.precision
                     {
                         break;
                     }
@@ -379,18 +387,19 @@ impl Problem {
             global_dist,
             global_radius,
             &options,
+            rng,
         )?;
         Ok(Self {
             minima,
             domain,
             num_minima,
-            global_value,
-            global_radius,
-            global_dist,
+            _global_value: global_value,
+            _global_radius: global_radius,
+            _global_dist: global_dist,
             delta,
             options,
             dim,
-            glob,
+            _glob: glob,
         })
     }
 
@@ -438,8 +447,8 @@ impl Problem {
                 return self.options.max_value;
             }
         }
-        let mut index: usize = 0;
-        while index <= self.num_minima
+        let mut index: usize = 1;
+        while index < self.num_minima
             && norm(&self.minima.local_min[index], x) > self.minima.rho[index]
         {
             index += 1;
@@ -501,20 +510,17 @@ impl Problem {
         ) {
             scal += (val - local_min_index) * (local_min0 - local_min_index);
         }
-        let delta: f64 = 1.0 - 1.0 / (2.0 * self.dim as f64);
-        let term1: f64 = (-6.0 * scal / norm_ / rho + 6.0 * a / rho / rho + 1.0 - delta / 2.0)
-            * norm_.powi(2)
-            / rho.powi(2);
+        let term1: f64 = (-6.0 * scal / norm_ / rho + 6.0 * a / rho / rho + 1.0 - self.delta / 2.0)
+            * norm_ * norm_
+            / rho / rho;
         let term2: f64 =
-            (16.0 * scal / norm_ / rho - 15.0 * a / rho / rho - 3.0 + 1.5 * delta) * norm_ / rho;
-        let term3: f64 = (-12.0 * scal / norm_ / rho + 10.0 * a / rho / rho + 3.0 - 1.5 * delta)
-            * norm_.powi(3)
-            / rho;
-        let term4: f64 = 0.5 * delta * norm_.powi(2);
-        term1 + term2 + term3 + term4 + self.minima.f[index]
+            (16.0 * scal / norm_ / rho - 15.0 * a / rho / rho - 3.0 + 1.5 * self.delta) * norm_ / rho;
+        let term3: f64 = (-12.0 * scal / norm_ / rho + 10.0 * a / rho / rho + 3.0 - 1.5 * self.delta) ;
+        let term4: f64 = 0.5 * self.delta * norm_ * norm_;
+        (term1 + term2 + term3 )* norm_ * norm_ * norm_ / rho+ term4 + self.minima.f[index]
     }
 
-    fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
+    pub fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
         }
@@ -559,7 +565,7 @@ impl Problem {
                     + 2.0)
     }
 
-    fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
+    pub fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
         }
@@ -613,7 +619,7 @@ impl Problem {
             + dif * delta
     }
 
-    fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
+    pub fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
         }
@@ -695,7 +701,8 @@ impl Problem {
                 + 5.0 * norm_.powi(3) / rho.powi(4)
                     * (-6.0 / rho * scal / norm_ + 6.0 / rho.powi(2) * a + 1.0 - 0.5 * self.delta)
                 + 4.0 * norm_.powi(2) / rho.powi(3)
-                    * (16.0 / rho * scal / norm_ - 15.0 / rho.powi(2) * a - 3.0 + 1.5 * self.delta)
+                    * (16.0 / rho * scal / norm_ - 15.0 / rho.powi(2) * a - 3.0
+                        + 1.5 * self.delta)
                 + norm_ / rho.powi(2)
                     * (-12.0 / rho * scal / norm_ + 10.0 / rho.powi(2) * a + 3.0
                         - 1.5 * self.delta)
@@ -705,17 +712,3 @@ impl Problem {
     }
 }
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
