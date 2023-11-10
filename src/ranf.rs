@@ -2,7 +2,7 @@ pub struct Ranf {
     long_lag: usize,
     short_lag: usize,
     separation: usize,
-    QUALITY: usize,
+    quality: usize,
     size: usize,
     ran_u: Vec<f64>, // generator state
     counter: usize,
@@ -29,7 +29,7 @@ impl Ranf {
             long_lag,
             short_lag,
             separation,
-            QUALITY: quality,
+            quality,
             size,
             ran_u,
             rnd_num: vec![0.0; size],
@@ -47,13 +47,12 @@ impl Ranf {
         seed: i64,
     ) -> Vec<f64> {
         let mut ran_u = vec![0.0; long_lag];
-        let mut j: usize;
         let mut t: i64;
         let mut s: i64;
         let mut u = vec![0.0; long_lag + long_lag - 1];
         let mut ul = vec![0.0; long_lag + long_lag - 1];
         let ulp = 2.0f64.powi(-52); // (1.0 / (1 << 30)) / (1 << 22); // 2 to the -52
-        let mut ss : f64 = 2.0 * ulp * ((seed & 0x3fffffff) + 2) as f64;
+        let mut ss: f64 = 2.0 * ulp * ((seed & 0x3fffffff) + 2) as f64;
         for j in 0..long_lag {
             u[j] = ss;
             ul[j] = 0.0; // bootstrap the buffer
@@ -91,7 +90,7 @@ impl Ranf {
                 }
             }
             if s % 2 == 1 {
-                for j in (1..long_lag+1).rev() {
+                for j in (1..long_lag + 1).rev() {
                     ul[j] = ul[j - 1];
                     u[j] = u[j - 1];
                 }

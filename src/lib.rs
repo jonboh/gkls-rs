@@ -1,11 +1,9 @@
 use std::f64::consts::PI;
 
 use itertools::izip;
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
 
-pub mod ranf;
-mod c_gkls;
+pub mod c_gkls;
+pub mod ranf; // TODO: make this pub(crate)
 
 pub struct Options {
     max_value: f64,
@@ -126,7 +124,6 @@ fn norm(x1: &[f64], x2: &[f64]) -> f64 {
 
 fn coincidence_check(minima: &Minima, num_minima: usize, precision: f64) -> CoincidenceCondition {
     // TODO: probably don't need num_minima and can len() minima
-    let num_minima = num_minima;
     for i in 2..num_minima {
         if norm(&minima.local_min[i], &minima.local_min[0]) < precision {
             return CoincidenceCondition::ParabolaMinCoincidence;
@@ -158,7 +155,6 @@ impl Problem {
         if num_minima <= 1 {
             return Err(GKLSError::NumMinima);
         }
-        let dim = dim;
         for i in 0..dim {
             if domain.left[i] >= domain.right[i] - options.precision {
                 return Err(GKLSError::Boundary);
@@ -200,7 +196,6 @@ impl Problem {
         let mut temp_d1: f64;
         let mut temp_d2: f64;
         let mut dist: f64;
-        let num_minima = num_minima;
         // Set the radii rho(i) of the attraction regions
         for i in 0..num_minima {
             temp_min = f64::MAX;
@@ -245,7 +240,7 @@ impl Problem {
         }
         // Correct the radii by weight coefficients w(i)
         for i in 0..num_minima {
-            minima.rho[i] = minima.w_rho[i] * minima.rho[i];
+            minima.rho[i] *= minima.w_rho[i];
         }
         // Set the local minima values f(i) of test functions
         minima.peak[0] = 0.0;
@@ -289,12 +284,9 @@ impl Problem {
         global_radius: f64,
         global_dist: f64,
     ) -> Result<Problem, GKLSError> {
-        let mut error: i32;
-        let mut i: usize;
-        let mut j: usize;
         let mut sin_phi: f64;
-        let mut gap = global_radius;
-        if nf < 1 || nf > 100 {
+        let gap = global_radius;
+        if !(1..=100).contains(&nf) {
             return Err(GKLSError::FuncNumber);
         }
         let domain = Domain::default(dim);
@@ -511,13 +503,16 @@ impl Problem {
             scal += (val - local_min_index) * (local_min0 - local_min_index);
         }
         let term1: f64 = (-6.0 * scal / norm_ / rho + 6.0 * a / rho / rho + 1.0 - self.delta / 2.0)
-            * norm_ * norm_
-            / rho / rho;
+            * norm_
+            * norm_
+            / rho
+            / rho;
         let term2: f64 =
-            (16.0 * scal / norm_ / rho - 15.0 * a / rho / rho - 3.0 + 1.5 * self.delta) * norm_ / rho;
-        let term3: f64 = (-12.0 * scal / norm_ / rho + 10.0 * a / rho / rho + 3.0 - 1.5 * self.delta) ;
+            (16.0 * scal / norm_ / rho - 15.0 * a / rho / rho - 3.0 + 1.5 * self.delta) * norm_
+                / rho;
+        let term3: f64 = -12.0 * scal / norm_ / rho + 10.0 * a / rho / rho + 3.0 - 1.5 * self.delta;
         let term4: f64 = 0.5 * self.delta * norm_ * norm_;
-        (term1 + term2 + term3 )* norm_ * norm_ * norm_ / rho+ term4 + self.minima.f[index]
+        (term1 + term2 + term3) * norm_ * norm_ * norm_ / rho + term4 + self.minima.f[index]
     }
 
     pub fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
@@ -676,7 +671,7 @@ impl Problem {
         if the_same {
             dh -= scal / norm_;
         }
-        let mut dQ_jk = -6.0 / rho.powi(4) * (dh * norm_.powi(3) + 3.0 * hj * difk * norm_.powi(2))
+        let mut dq_jk = -6.0 / rho.powi(4) * (dh * norm_.powi(3) + 3.0 * hj * difk * norm_.powi(2))
             - 30.0 / rho.powi(4) * hk * difj * norm_
             + 15.0 / rho.powi(3)
                 * (-6.0 / rho * scal / norm_ + 6.0 / rho.powi(2) * a + 1.0 - 0.5 * self.delta)
@@ -697,18 +692,51 @@ impl Problem {
                 * difk
                 / norm_;
         if the_same {
-            dQ_jk = dQ_jk
+            dq_jk = dq_jk
                 + 5.0 * norm_.powi(3) / rho.powi(4)
                     * (-6.0 / rho * scal / norm_ + 6.0 / rho.powi(2) * a + 1.0 - 0.5 * self.delta)
                 + 4.0 * norm_.powi(2) / rho.powi(3)
-                    * (16.0 / rho * scal / norm_ - 15.0 / rho.powi(2) * a - 3.0
-                        + 1.5 * self.delta)
+                    * (16.0 / rho * scal / norm_ - 15.0 / rho.powi(2) * a - 3.0 + 1.5 * self.delta)
                 + norm_ / rho.powi(2)
                     * (-12.0 / rho * scal / norm_ + 10.0 / rho.powi(2) * a + 3.0
                         - 1.5 * self.delta)
                 + self.delta;
         }
-        dQ_jk
+        dq_jk
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::{c_gkls::CGKLSProblem, Problem};
+
+    #[test]
+    fn default_nd_func() {
+        let tolerance = 10e-4;
+        let problem = Problem::default();
+        let problem_c_impl = CGKLSProblem::default();
+        let n_steps = 10;
+        for x in (-n_steps..n_steps)
+            .step_by(2)
+            .map(|num| num as f64 / n_steps as f64)
+        {
+            for y in (-n_steps..n_steps)
+                .step_by(2)
+                .map(|num| num as f64 / n_steps as f64)
+            {
+                let input: [f64; 2] = [x, y];
+                let result = problem.nd_func(&input);
+                let result_c_impl = problem_c_impl.nd_func(&input);
+                assert!(
+                    (result - result_c_impl).abs() <= tolerance,
+                    "{} is not approximately equal to {} with tolerance {}",
+                    result,
+                    result_c_impl,
+                    tolerance
+                );
+            }
+        }
+    }
+
+    // TODO: add macro to easily test all public functions
+}
