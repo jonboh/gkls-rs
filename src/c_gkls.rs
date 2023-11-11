@@ -2,6 +2,7 @@ use std::ffi::c_double;
 
 use crate::{Domain, GKLSError, Options};
 
+#[allow(dead_code)]
 #[link(name = "gkls", kind = "static")]
 extern "C" {
 
@@ -31,11 +32,11 @@ extern "C" {
     fn GKLS_D2_func(x: *const f64) -> f64;
 
     /// first order partial derivative of the D-typed test function
-    fn GKLS_D_deriv(var_j: u32, x: *const f64) -> f64;
+    fn GKLS_D_deriv(var_j: usize, x: *const f64) -> f64;
     /// first order partial derivative of the D2-typed test function
-    fn GKLS_D2_deriv1(var_j: u32, x: *const f64) -> f64;
+    fn GKLS_D2_deriv1(var_j: usize, x: *const f64) -> f64;
     /// second order partial derivative of the D2-typed test function
-    fn GKLS_D2_deriv2(var_j: u32, var_k: u32, x: *const f64) -> f64;
+    fn GKLS_D2_deriv2(var_j: usize, var_k: usize, x: *const f64) -> f64;
     /// gradient of the D-type test function
     fn GKLS_D_gradient(x: *const f64, g: *mut f64) -> i32;
     /// gradient of the D2-type test function fn GKLS_D2_hessian  (double *, double **) -> i32;
@@ -44,6 +45,7 @@ extern "C" {
     fn GKLS_D2_hessian(x: *const f64, g: *const *mut f64) -> i32;
 }
 
+#[allow(dead_code)]
 pub struct CGKLSProblem {
     nf: usize,
     options: Options,
@@ -83,6 +85,7 @@ impl Default for CGKLSProblem {
     }
 }
 
+#[allow(dead_code)]
 impl CGKLSProblem {
     pub(crate) fn new(
         nf: usize,
@@ -160,7 +163,7 @@ impl CGKLSProblem {
     }
 
     /// first order partial derivative of the D-typed test function
-    pub(crate) fn d_deriv(&self, var_j: u32, x: &[f64]) -> f64 {
+    pub(crate) fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
         unsafe {
             GKLS_dim = self.dim;
             GKLS_num_minima = self.num_minima;
@@ -178,7 +181,7 @@ impl CGKLSProblem {
         result
     }
     /// first order partial derivative of the D2-typed test function
-    fn d2_deriv1(&self, var_j: u32, x: &[f64]) -> f64 {
+    pub(crate) fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
         unsafe {
             GKLS_dim = self.dim;
             GKLS_num_minima = self.num_minima;
@@ -196,7 +199,7 @@ impl CGKLSProblem {
         result
     }
     /// second order partial derivative of the D2-typed test function
-    pub(crate) fn d2_deriv2(&self, var_j: u32, var_k: u32, x: &[f64]) -> f64 {
+    pub(crate) fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
         unsafe {
             GKLS_dim = self.dim;
             GKLS_num_minima = self.num_minima;

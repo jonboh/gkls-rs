@@ -427,7 +427,7 @@ impl Problem {
         ) {
             scal += (val - local_min_index) * (local_min0 - local_min_index);
         }
-        (1.0 - 2.0 / rho * scal / norm_ + a / rho / rho) * norm_ * norm_ + self.minima.f[index]
+        (1.0 - 2.0 / rho * scal / norm_ + a / rho.powi(2)) * norm_.powi(2) + self.minima.f[index]
     }
 
     pub fn d_func(&self, x: &[f64]) -> f64 {
@@ -464,8 +464,8 @@ impl Problem {
         ) {
             scal += (val - local_min_index) * (local_min0 - local_min_index);
         }
-        (2.0 / rho / rho * scal / norm_ - 2.0 * a / rho / rho / rho) * norm_.powi(3)
-            + (1.0 - 4.0 * scal / norm_ / rho + 3.0 * a / rho / rho) * norm_.powi(2)
+        (2.0 / rho.powi(2) * scal / norm_ - 2.0 * a / rho.powi(3)) * norm_.powi(3)
+            + (1.0 - 4.0 * scal / norm_ / rho + 3.0 * a / rho.powi(2)) * norm_.powi(2)
             + self.minima.f[index]
     }
 
@@ -502,30 +502,33 @@ impl Problem {
         ) {
             scal += (val - local_min_index) * (local_min0 - local_min_index);
         }
-        let term1: f64 = (-6.0 * scal / norm_ / rho + 6.0 * a / rho / rho + 1.0 - self.delta / 2.0)
-            * norm_
-            * norm_
-            / rho
-            / rho;
+        let term1: f64 = (-6.0 * scal / norm_ / rho + 6.0 * a / rho.powi(2) + 1.0
+            - self.delta / 2.0)
+            * norm_.powi(2)
+            / rho.powi(2);
         let term2: f64 =
             (16.0 * scal / norm_ / rho - 15.0 * a / rho / rho - 3.0 + 1.5 * self.delta) * norm_
                 / rho;
-        let term3: f64 = -12.0 * scal / norm_ / rho + 10.0 * a / rho / rho + 3.0 - 1.5 * self.delta;
+        let term3: f64 =
+            -12.0 * scal / norm_ / rho + 10.0 * a / rho.powi(2) + 3.0 - 1.5 * self.delta;
         let term4: f64 = 0.5 * self.delta * norm_ * norm_;
-        (term1 + term2 + term3) * norm_ * norm_ * norm_ / rho + term4 + self.minima.f[index]
+        (term1 + term2 + term3) * norm_.powi(3) / rho + term4 + self.minima.f[index]
     }
 
     pub fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
+        let mut var_j = var_j;
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
+        } else {
+            var_j -= 1;
         }
         for (val, left, right) in izip!(x, self.domain.left.iter(), self.domain.right.iter()) {
             if *val < left - self.options.precision || *val > right + self.options.precision {
                 return self.options.max_value;
             }
         }
-        let mut index = 0;
-        while index <= self.num_minima
+        let mut index = 1;
+        while index < self.num_minima
             && norm(&self.minima.local_min[index], x) > self.minima.rho[index]
         {
             index += 1;
@@ -551,26 +554,29 @@ impl Problem {
         let dif = x[var_j] - self.minima.local_min[index][var_j];
         let h = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j]) * norm_
             - scal * dif / norm_;
-        h * (2.0 / rho / rho * norm_ - 4.0 / rho)
+        h * (2.0 / rho.powi(2) * norm_ - 4.0 / rho)
             + dif
-                * (6.0 / rho / rho * scal
-                    - 6.0 / rho / rho / rho * a * norm_
+                * (6.0 / rho.powi(2) * scal
+                    - 6.0 / rho.powi(3) * a * norm_
                     - 8.0 / rho / norm_ * scal
-                    + 6.0 / rho / rho * a
+                    + 6.0 / rho.powi(2) * a
                     + 2.0)
     }
 
     pub fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
+        let mut var_j = var_j;
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
+        } else {
+            var_j -= 1;
         }
         for (val, left, right) in izip!(x, self.domain.left.iter(), self.domain.right.iter()) {
             if *val < left - self.options.precision || *val > right + self.options.precision {
                 return self.options.max_value;
             }
         }
-        let mut index = 0;
-        while index <= self.num_minima
+        let mut index = 1;
+        while index < self.num_minima
             && norm(&self.minima.local_min[index], x) > self.minima.rho[index]
         {
             index += 1;
@@ -596,25 +602,25 @@ impl Problem {
         let dif = x[var_j] - self.minima.local_min[index][var_j];
         let h = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j]) * norm_
             - scal * dif / norm_;
-        let delta: f64 = 1.0;
-        h * norm_ / rho / rho * (-6.0 * norm_ * norm_ / rho / rho + 16.0 * norm_ / rho - 12.0)
+        h * norm_ / rho.powi(2) * (-6.0 * norm_.powi(2) / rho.powi(2) + 16.0 * norm_ / rho - 12.0)
             + dif
                 * norm_
-                * ((-30.0 / rho / norm_ * scal + 30.0 / rho / rho * a + 5.0 - 2.5 * delta)
-                    / rho
-                    / rho
-                    / rho
-                    * norm_
-                    * norm_
-                    + (64.0 / rho / norm_ * scal - 60.0 / rho / rho * a - 12.0 + 6.0 * delta)
-                        / rho
-                        / rho
+                * ((-30.0 / rho / norm_ * scal + 30.0 / rho.powi(2) * a + 5.0 - 2.5 * self.delta)
+                    / rho.powi(3)
+                    * norm_.powi(2)
+                    + (64.0 / rho / norm_ * scal - 60.0 / rho.powi(2) * a - 12.0
+                        + 6.0 * self.delta)
+                        / rho.powi(2)
                         * norm_
-                    + (-36.0 / rho / norm_ * scal + 30.0 / rho / rho * a + 9.0 - 4.5 * delta) / rho)
-            + dif * delta
+                    + (-36.0 / rho / norm_ * scal + 30.0 / rho.powi(2) * a + 9.0
+                        - 4.5 * self.delta)
+                        / rho)
+            + dif * self.delta
     }
 
     pub fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
+        let mut var_j = var_j;
+        let mut var_k = var_k;
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
         }
@@ -622,6 +628,8 @@ impl Problem {
             return self.options.max_value;
         }
         let the_same = var_j == var_k;
+        var_j -= 1;
+        var_k -= 1;
         for (val, left, right) in izip!(x, self.domain.left.iter(), self.domain.right.iter()) {
             if *val < left - self.options.precision || *val > right + self.options.precision {
                 return self.options.max_value;
@@ -671,7 +679,7 @@ impl Problem {
         if the_same {
             dh -= scal / norm_;
         }
-        let mut dq_jk = -6.0 / rho.powi(4) * (dh * norm_.powi(3) + 3.0 * hj * difk * norm_.powi(2))
+        let mut dq_jk = -6.0 / rho.powi(4) * (dh * norm_.powi(3) + 3.0 * hj * difk * norm_)
             - 30.0 / rho.powi(4) * hk * difj * norm_
             + 15.0 / rho.powi(3)
                 * (-6.0 / rho * scal / norm_ + 6.0 / rho.powi(2) * a + 1.0 - 0.5 * self.delta)
@@ -693,50 +701,128 @@ impl Problem {
                 / norm_;
         if the_same {
             dq_jk = dq_jk
-                + 5.0 * norm_.powi(3) / rho.powi(4)
+                + 5.0 * norm_.powi(3) / rho.powi(3) // <- rho.powi(4) -> rho.powi(4)
                     * (-6.0 / rho * scal / norm_ + 6.0 / rho.powi(2) * a + 1.0 - 0.5 * self.delta)
-                + 4.0 * norm_.powi(2) / rho.powi(3)
+                + 4.0 * norm_.powi(2) / rho.powi(2)
                     * (16.0 / rho * scal / norm_ - 15.0 / rho.powi(2) * a - 3.0 + 1.5 * self.delta)
-                + norm_ / rho.powi(2)
+                + norm_ / rho
                     * (-12.0 / rho * scal / norm_ + 10.0 / rho.powi(2) * a + 3.0
                         - 1.5 * self.delta)
                 + self.delta;
         }
         dq_jk
     }
+
+    // TODO: add gradient and hessian convenience functions
 }
 
+// NOTE: tests need to be run in a single thread due to she sharing of global variables in the C
+// implementation of GKLS. use `cargo test -- --test-threads=1`
+// TODO: add lock to prevent this
 #[cfg(test)]
-mod tests {
+mod default_problem {
     use crate::{c_gkls::CGKLSProblem, Problem};
 
+    macro_rules! test_problem_value_function {
+        ($method:ident) => {
+            #[test]
+            fn $method() {
+                let tolerance = 10e-6;
+                let problem = Problem::default();
+                let problem_c_impl = CGKLSProblem::default();
+                let n_steps = 25;
+                for x in (-n_steps..n_steps)
+                    .step_by(2)
+                    .map(|num| num as f64 / n_steps as f64)
+                {
+                    for y in (-n_steps..n_steps)
+                        .step_by(2)
+                        .map(|num| num as f64 / n_steps as f64)
+                    {
+                        let input: [f64; 2] = [x, y];
+                        let result = problem.$method(&input);
+                        let result_c_impl = problem_c_impl.$method(&input);
+                        assert!(
+                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                            "{} is not approximately equal to \n{} with tolerance {}",
+                            result,
+                            result_c_impl,
+                            tolerance
+                        );
+                    }
+                }
+            }
+        };
+    }
+    test_problem_value_function!(nd_func);
+    test_problem_value_function!(d_func);
+    test_problem_value_function!(d2_func);
+
+    macro_rules! test_problem_deriv_function {
+        ($method:ident, $tolerance:expr) => {
+            #[test]
+            fn $method() {
+                let tolerance = $tolerance;
+                let problem = Problem::default();
+                let problem_c_impl = CGKLSProblem::default();
+                let n_steps = 25;
+                for dimension in 0..problem.dim {
+                    for x in (-n_steps..n_steps)
+                        .step_by(2)
+                        .map(|num| num as f64 / n_steps as f64)
+                    {
+                        for y in (-n_steps..n_steps)
+                            .step_by(2)
+                            .map(|num| num as f64 / n_steps as f64)
+                        {
+                            let input: [f64; 2] = [x, y];
+                            let result = problem.$method(dimension, &input);
+                            let result_c_impl = problem_c_impl.$method(dimension, &input);
+                            assert!(
+                                ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                                "{} is not approximately equal to \n{} with tolerance {}",
+                                result,
+                                result_c_impl,
+                                tolerance
+                            );
+                        }
+                    }
+                }
+            }
+        };
+    }
+    test_problem_deriv_function!(d_deriv, 10e-6);
+    test_problem_deriv_function!(d2_deriv1, 10e-6);
+
     #[test]
-    fn default_nd_func() {
-        let tolerance = 10e-4;
+    fn d2_deriv2() {
+        let tolerance = 10e-6;
         let problem = Problem::default();
         let problem_c_impl = CGKLSProblem::default();
-        let n_steps = 10;
-        for x in (-n_steps..n_steps)
-            .step_by(2)
-            .map(|num| num as f64 / n_steps as f64)
-        {
-            for y in (-n_steps..n_steps)
-                .step_by(2)
-                .map(|num| num as f64 / n_steps as f64)
-            {
-                let input: [f64; 2] = [x, y];
-                let result = problem.nd_func(&input);
-                let result_c_impl = problem_c_impl.nd_func(&input);
-                assert!(
-                    (result - result_c_impl).abs() <= tolerance,
-                    "{} is not approximately equal to {} with tolerance {}",
-                    result,
-                    result_c_impl,
-                    tolerance
-                );
+        let n_steps = 25;
+        for dim0 in 0..problem.dim {
+            for dim1 in 0..problem.dim {
+                for x in (-n_steps..n_steps)
+                    .step_by(2)
+                    .map(|num| num as f64 / n_steps as f64)
+                {
+                    for y in (-n_steps..n_steps)
+                        .step_by(2)
+                        .map(|num| num as f64 / n_steps as f64)
+                    {
+                        let input: [f64; 2] = [x, y];
+                        let result = problem.d2_deriv2(dim0, dim1, &input);
+                        let result_c_impl = problem_c_impl.d2_deriv2(dim0, dim1, &input);
+                        assert!(
+                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                            "{} is not approximately equal to \n{} with tolerance {}",
+                            result,
+                            result_c_impl,
+                            tolerance
+                        );
+                    }
+                }
             }
         }
     }
-
-    // TODO: add macro to easily test all public functions
 }
