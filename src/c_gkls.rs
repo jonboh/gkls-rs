@@ -2,47 +2,82 @@ use std::ffi::c_double;
 
 use crate::{Domain, GKLSError, Options};
 
-#[allow(dead_code)]
-#[link(name = "gkls", kind = "static")]
-extern "C" {
+use self::cbinding::{
+    GKLS_D2_deriv1, GKLS_D2_deriv2, GKLS_D2_func, GKLS_D2_gradient, GKLS_D2_hessian, GKLS_D_deriv,
+    GKLS_D_func, GKLS_D_gradient, GKLS_ND_func, GKLS_arg_generate, GKLS_domain_alloc,
+    GKLS_domain_free, GKLS_free, PointersGKLS, GLOBAL_CVARIABLES,
+};
 
-    static mut GKLS_dim: usize;
-    static mut GKLS_num_minima: usize;
-    static mut GKLS_global_dist: f64;
-    static mut GKLS_global_radius: f64;
-    static mut GKLS_global_value: f64;
+mod cbinding {
+    use lazy_static::lazy_static;
+    use std::sync::Mutex;
 
-    /// allocate boundary vectors
-    fn GKLS_domain_alloc() -> i32;
-    /// deallocate boundary vectors
-    fn GKLS_domain_free();
-    /// set default values of the input parameters and allocate the boundary vectors if necessary
-    fn GKLS_set_default() -> i32;
-    /// deallocate memory needed for the generator
-    fn GKLS_free();
-    /// test the validity of the input parameters
-    fn GKLS_parameters_check() -> i32;
-    /// test function generator
-    fn GKLS_arg_generate(nf: u32) -> i32;
-    /// evaluation of an ND-typed test function
-    fn GKLS_ND_func(x: *const f64) -> f64;
-    /// evaluation of a D-typed test function
-    fn GKLS_D_func(x: *const f64) -> f64;
-    /// evaluation of a D2-type test function
-    fn GKLS_D2_func(x: *const f64) -> f64;
+    #[allow(dead_code)]
+    #[link(name = "gkls", kind = "static")]
+    extern "C" {
+        /// allocate boundary vectors
+        pub(super) fn GKLS_domain_alloc() -> i32;
+        /// deallocate boundary vectors
+        pub(super) fn GKLS_domain_free();
+        /// set default values of the input parameters and allocate the boundary vectors if necessary
+        pub(super) fn GKLS_set_default() -> i32;
+        /// deallocate memory needed for the generator
+        pub(super) fn GKLS_free();
+        /// test the validity of the input parameters
+        pub(super) fn GKLS_parameters_check() -> i32;
+        /// test function generator
+        pub(super) fn GKLS_arg_generate(nf: u32) -> i32;
+        /// evaluation of an ND-typed test function
+        pub(super) fn GKLS_ND_func(x: *const f64) -> f64;
+        /// evaluation of a D-typed test function
+        pub(super) fn GKLS_D_func(x: *const f64) -> f64;
+        /// evaluation of a D2-type test function
+        pub(super) fn GKLS_D2_func(x: *const f64) -> f64;
 
-    /// first order partial derivative of the D-typed test function
-    fn GKLS_D_deriv(var_j: usize, x: *const f64) -> f64;
-    /// first order partial derivative of the D2-typed test function
-    fn GKLS_D2_deriv1(var_j: usize, x: *const f64) -> f64;
-    /// second order partial derivative of the D2-typed test function
-    fn GKLS_D2_deriv2(var_j: usize, var_k: usize, x: *const f64) -> f64;
-    /// gradient of the D-type test function
-    fn GKLS_D_gradient(x: *const f64, g: *mut f64) -> i32;
-    /// gradient of the D2-type test function fn GKLS_D2_hessian  (double *, double **) -> i32;
-    fn GKLS_D2_gradient(x: *const f64, g: *mut f64) -> i32;
-    /// Hessian of the D2-type test function
-    fn GKLS_D2_hessian(x: *const f64, g: *const *mut f64) -> i32;
+        /// first order partial derivative of the D-typed test function
+        pub(super) fn GKLS_D_deriv(var_j: usize, x: *const f64) -> f64;
+        /// first order partial derivative of the D2-typed test function
+        pub(super) fn GKLS_D2_deriv1(var_j: usize, x: *const f64) -> f64;
+        /// second order partial derivative of the D2-typed test function
+        pub(super) fn GKLS_D2_deriv2(var_j: usize, var_k: usize, x: *const f64) -> f64;
+        /// gradient of the D-type test function
+        pub(super) fn GKLS_D_gradient(x: *const f64, g: *mut f64) -> i32;
+        /// gradient of the D2-type test function fn GKLS_D2_hessian  (double *, double **) -> i32;
+        pub(super) fn GKLS_D2_gradient(x: *const f64, g: *mut f64) -> i32;
+        /// Hessian of the D2-type test function
+        pub(super) fn GKLS_D2_hessian(x: *const f64, g: *const *mut f64) -> i32;
+
+        static mut GKLS_dim: usize;
+        static mut GKLS_num_minima: usize;
+        static mut GKLS_global_dist: f64;
+        static mut GKLS_global_radius: f64;
+        static mut GKLS_global_value: f64;
+    }
+
+    pub(super) struct PointersGKLS {
+        pub gkls_dim: &'static mut usize,
+        pub gkls_num_minima: &'static mut usize,
+        pub gkls_global_dist: &'static mut f64,
+        pub gkls_global_radius: &'static mut f64,
+        pub gkls_global_value: &'static mut f64,
+    }
+
+    // GLOBAL_CVARIABLES Mutex makes sure that the global stare of GKLS is not altered while
+    // a computation is being performed. Each computation is expected to allocate and deallocate
+    // the global state of GKLS. This is extremely bad performance wise, but we are only interested
+    // in this binding for testing purposes. For performance a user should use the Rust
+    // implementation.
+    lazy_static! {
+        pub(super) static ref GLOBAL_CVARIABLES: Mutex<PointersGKLS> = Mutex::new(unsafe {
+            PointersGKLS {
+                gkls_dim: &mut GKLS_dim,
+                gkls_num_minima: &mut GKLS_num_minima,
+                gkls_global_dist: &mut GKLS_global_dist,
+                gkls_global_radius: &mut GKLS_global_radius,
+                gkls_global_value: &mut GKLS_global_value,
+            }
+        });
+    }
 }
 
 #[allow(dead_code)]
@@ -81,13 +116,13 @@ impl Default for CGKLSProblem {
             global_radius,
             global_dist,
         )
-        .unwrap()
+        .expect("The default problem is valid")
     }
 }
 
 #[allow(dead_code)]
 impl CGKLSProblem {
-    pub(crate) fn new(
+    pub(crate) const fn new(
         nf: usize,
         options: Options,
         dim: usize,
@@ -96,7 +131,7 @@ impl CGKLSProblem {
         global_radius: f64,
         global_dist: f64,
     ) -> Result<Self, GKLSError> {
-        Ok(CGKLSProblem {
+        Ok(Self {
             nf,
             options,
             dim,
@@ -107,149 +142,100 @@ impl CGKLSProblem {
         })
     }
 
-    pub(crate) fn nd_func(&self, x: &[f64]) -> f64 {
+    fn allocate_problem(&self, pointers: &mut PointersGKLS) {
+        *pointers.gkls_dim = self.dim;
+        *pointers.gkls_num_minima = self.num_minima;
+        *pointers.gkls_global_dist = self.global_dist;
+        *pointers.gkls_global_radius = self.global_radius;
+        *pointers.gkls_global_value = self.global_value;
         unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
             GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap())
+            GKLS_arg_generate(
+                self.nf
+                    .try_into()
+                    .expect("Number functions are expected to be between 1 and 100"),
+            )
         };
-        let result = unsafe { GKLS_ND_func(x.as_ptr()) };
+    }
+
+    fn deallocate_problem() {
         unsafe {
             GKLS_domain_free();
             GKLS_free();
         }
+    }
+
+    pub(crate) fn nd_func(&self, x: &[f64]) -> f64 {
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
+        let result = unsafe { GKLS_ND_func(x.as_ptr()) };
+        Self::deallocate_problem();
         result
     }
 
     pub(crate) fn d_func(&self, x: &[f64]) -> f64 {
-        unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap())
-        };
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         let result = unsafe { GKLS_D_func(x.as_ptr()) };
-        unsafe {
-            GKLS_domain_free();
-            GKLS_free();
-        }
+        Self::deallocate_problem();
         result
     }
 
     /// evaluation of a D2-type test function
     pub(crate) fn d2_func(&self, x: &[f64]) -> f64 {
-        unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap())
-        };
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         let result = unsafe { GKLS_D2_func(x.as_ptr()) };
-        unsafe {
-            GKLS_domain_free();
-            GKLS_free();
-        }
+        Self::deallocate_problem();
         result
     }
 
     /// first order partial derivative of the D-typed test function
     pub(crate) fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
-        unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap())
-        };
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         let result = unsafe { GKLS_D_deriv(var_j, x.as_ptr()) };
-        unsafe {
-            GKLS_domain_free();
-            GKLS_free();
-        }
+        Self::deallocate_problem();
         result
     }
     /// first order partial derivative of the D2-typed test function
     pub(crate) fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
-        unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap())
-        };
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         let result = unsafe { GKLS_D2_deriv1(var_j, x.as_ptr()) };
-        unsafe {
-            GKLS_domain_free();
-            GKLS_free();
-        }
+        Self::deallocate_problem();
         result
     }
     /// second order partial derivative of the D2-typed test function
     pub(crate) fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
-        unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap())
-        };
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         let result = unsafe { GKLS_D2_deriv2(var_j, var_k, x.as_ptr()) };
-        unsafe {
-            GKLS_domain_free();
-            GKLS_free();
-        }
+        Self::deallocate_problem();
         result
     }
     /// gradient of the D-type test function
     fn d_gradient(&self, x: &[f64]) -> Vec<f64> {
         let mut g: Vec<f64> = Vec::new();
         g.resize(self.dim, f64::NAN);
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap());
             GKLS_D_gradient(x.as_ptr(), g.as_mut_ptr());
-            GKLS_domain_free();
-            GKLS_free();
         }
+        Self::deallocate_problem();
         g
     }
-    /// gradient of the D2-type test function fn GKLS_D2_hessian  (double *, double **) -> i32; // Hessian of the D2-type test function
+    /// gradient of the D2-type test function fn `GKLS_D2_hessian`  (double *, double **) -> i32; // Hessian of the D2-type test function
     pub(crate) fn d2_gradient(&self, x: &[f64]) -> Vec<f64> {
         let mut g: Vec<f64> = Vec::new();
         g.resize(self.dim, f64::NAN);
+        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap());
             GKLS_D2_gradient(x.as_ptr(), g.as_mut_ptr());
-            GKLS_domain_free();
-            GKLS_free();
         }
+        Self::deallocate_problem();
         g
     }
     pub(crate) fn d2_hessian(&self, x: &[f64]) -> Vec<Vec<f64>> {
@@ -259,18 +245,12 @@ impl CGKLSProblem {
         for row in &mut h {
             row_pointers.push(row.as_mut_ptr());
         }
+        let pointers: &mut PointersGKLS = &mut GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(pointers);
         unsafe {
-            GKLS_dim = self.dim;
-            GKLS_num_minima = self.num_minima;
-            GKLS_global_dist = self.global_dist;
-            GKLS_global_radius = self.global_radius;
-            GKLS_global_value = self.global_value;
-            GKLS_domain_alloc();
-            GKLS_arg_generate(self.nf.try_into().unwrap());
             GKLS_D2_hessian(x.as_ptr(), row_pointers.as_ptr());
-            GKLS_domain_free();
-            GKLS_free();
         }
+        Self::deallocate_problem();
         h
     }
 }
