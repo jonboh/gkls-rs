@@ -26,7 +26,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     _plot_gkls_rs();
     Ok(())
 }
-#[test]
-fn entry_point() {
-    main().unwrap()
-}

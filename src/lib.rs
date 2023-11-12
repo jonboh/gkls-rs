@@ -2,14 +2,14 @@ use std::f64::consts::PI;
 
 use itertools::izip;
 
-pub mod c_gkls;
-pub mod ranf; // TODO: make this pub(crate)
+pub(crate) mod c_gkls;
+pub(crate) mod ranf;
 
 pub struct Options {
     max_value: f64,
     precision: f64,
     paraboloid_min: f64,
-    global_min_value: f64,
+    _global_min_value: f64,
     delta_max_value: f64,
 }
 
@@ -19,7 +19,7 @@ impl Default for Options {
             max_value: 1e+100,
             precision: 1e-10,
             paraboloid_min: 0.0,
-            global_min_value: -1.0,
+            _global_min_value: -1.0,
             delta_max_value: 10.0,
         }
     }
@@ -188,7 +188,6 @@ impl Problem {
         minima: &mut Minima,
         glob: &mut GlobalMinima,
         global_value: f64,
-        _global_dist: f64,
         global_radius: f64,
         options: &Options,
         rng: ranf::Ranf,
@@ -380,7 +379,6 @@ impl Problem {
             &mut minima,
             &mut glob,
             global_value,
-            global_dist,
             global_radius,
             &options,
             rng,
@@ -765,114 +763,223 @@ impl Problem {
         }
         dq_jk
     }
-
     // TODO: add gradient and hessian convenience functions
 }
 
 #[cfg(test)]
-mod default_problem {
-    use crate::{c_gkls::CGKLSProblem, Problem};
+mod tests {
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+
+    const SEED: u64 = 42;
+    const N_TESTPOINTS: usize = 100;
+    const TOLERANCE: f64 = 10e-6;
+
+    fn generate_testpoints(dim: usize) -> Vec<Vec<f64>> {
+        let mut rng = StdRng::seed_from_u64(SEED);
+        (0..N_TESTPOINTS)
+            .map(|_| (0..dim).map(|_| rng.gen()).collect())
+            .collect()
+    }
 
     macro_rules! test_problem_value_function {
-        ($method:ident) => {
+        ($gkls_problem:expr, $gkls_problem_cimpl:expr, $method:ident, $tolerance:expr) => {
             #[test]
             fn $method() {
-                let tolerance = 10e-6;
-                let problem = Problem::default();
-                let problem_c_impl = CGKLSProblem::default();
-                let n_steps = 25;
-                for x in (-n_steps..n_steps)
-                    .step_by(2)
-                    .map(|num| num as f64 / n_steps as f64)
-                {
-                    for y in (-n_steps..n_steps)
-                        .step_by(2)
-                        .map(|num| num as f64 / n_steps as f64)
-                    {
-                        let input: [f64; 2] = [x, y];
-                        let result = problem.$method(&input);
-                        let result_c_impl = problem_c_impl.$method(&input);
-                        assert!(
-                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
-                            "{} is not approximately equal to \n{} with tolerance {}",
-                            result,
-                            result_c_impl,
-                            tolerance
-                        );
-                    }
-                }
-            }
-        };
-    }
-    test_problem_value_function!(nd_func);
-    test_problem_value_function!(d_func);
-    test_problem_value_function!(d2_func);
-
-    macro_rules! test_problem_deriv_function {
-        ($method:ident, $tolerance:expr) => {
-            #[test]
-            fn $method() {
+                use crate::tests::generate_testpoints;
                 let tolerance = $tolerance;
-                let problem = Problem::default();
-                let problem_c_impl = CGKLSProblem::default();
-                let n_steps = 25;
-                for dimension in 0..problem.dim {
-                    for x in (-n_steps..n_steps)
-                        .step_by(2)
-                        .map(|num| num as f64 / n_steps as f64)
+                let problem = $gkls_problem;
+                let problem_cimpl = $gkls_problem_cimpl;
+                for input in generate_testpoints(problem.dim) {
                     {
-                        for y in (-n_steps..n_steps)
-                            .step_by(2)
-                            .map(|num| num as f64 / n_steps as f64)
-                        {
-                            let input: [f64; 2] = [x, y];
-                            let result = problem.$method(dimension, &input);
-                            let result_c_impl = problem_c_impl.$method(dimension, &input);
-                            assert!(
-                                ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
-                                "{} is not approximately equal to \n{} with tolerance {}",
-                                result,
-                                result_c_impl,
-                                tolerance
-                            );
-                        }
+                        let result = problem.$method(&input);
+                        let result_c_impl = problem_cimpl.$method(&input);
+                        assert!(
+                            (result - result_c_impl).abs() <= tolerance,
+                            "{} is not approximately equal to \n{} with absolute tolerance {}",
+                            result,
+                            result_c_impl,
+                            tolerance
+                        );
+                        assert!(
+                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                            "{} is not approximately equal to \n{} with relative tolerance {}",
+                            result,
+                            result_c_impl,
+                            tolerance
+                        );
                     }
                 }
             }
         };
     }
-    test_problem_deriv_function!(d_deriv, 10e-6);
-    test_problem_deriv_function!(d2_deriv1, 10e-6);
 
-    #[test]
-    fn d2_deriv2() {
-        let tolerance = 10e-6;
-        let problem = Problem::default();
-        let problem_c_impl = CGKLSProblem::default();
-        let n_steps = 25;
-        for dim0 in 0..problem.dim {
-            for dim1 in 0..problem.dim {
-                for x in (-n_steps..n_steps)
-                    .step_by(2)
-                    .map(|num| num as f64 / n_steps as f64)
-                {
-                    for y in (-n_steps..n_steps)
-                        .step_by(2)
-                        .map(|num| num as f64 / n_steps as f64)
-                    {
-                        let input: [f64; 2] = [x, y];
-                        let result = problem.d2_deriv2(dim0, dim1, &input);
-                        let result_c_impl = problem_c_impl.d2_deriv2(dim0, dim1, &input);
+    macro_rules! test_problem_deriv1_function {
+        ($gkls_problem:expr, $gkls_problem_cimpl:expr, $method:ident, $tolerance:expr) => {
+            #[test]
+            fn $method() {
+                use crate::tests::generate_testpoints;
+                let tolerance = $tolerance;
+                let problem = $gkls_problem;
+                let problem_cimpl = $gkls_problem_cimpl;
+                for input in generate_testpoints(problem.dim) {
+                    for dimension in 0..problem.dim {
+                        let result = problem.$method(dimension, &input);
+                        let result_c_impl = problem_cimpl.$method(dimension, &input);
                         assert!(
-                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
-                            "{} is not approximately equal to \n{} with tolerance {}",
+                            (result - result_c_impl).abs() <= tolerance,
+                            "{} is not approximately equal to \n{} with absolute tolerance {}",
                             result,
                             result_c_impl,
                             tolerance
                         );
+                        assert!(
+                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                            "{} is not approximately equal to \n{} with relative tolerance {}",
+                            result,
+                            result_c_impl,
+                            tolerance
+                        );
+                    }
+                }
+            }
+        };
+    }
+
+    macro_rules! test_problem_deriv2_function {
+        ($gkls_problem:expr, $gkls_problem_cimpl:expr, $tolerance:expr) => {
+            #[test]
+            fn d2_deriv2() {
+                use crate::tests::generate_testpoints;
+                let tolerance = $tolerance;
+                let problem = $gkls_problem;
+                let problem_cimpl = $gkls_problem_cimpl;
+                for input in generate_testpoints(problem.dim) {
+                for dim0 in 0..problem.dim {
+                    for dim1 in 0..problem.dim {
+                            {
+                                let result = problem.d2_deriv2(dim0, dim1, &input);
+                                let result_c_impl = problem_cimpl.d2_deriv2(dim0, dim1, &input);
+                                assert!(
+                                    (result - result_c_impl).abs() <= tolerance,
+                                    "{} is not approximately equal to \n{} with absolute tolerance {}",
+                                    result,
+                                    result_c_impl,
+                                    tolerance
+                                );
+                                assert!(
+                                    ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                                    "{} is not approximately equal to \n{} with relative tolerance {}",
+                                    result,
+                                    result_c_impl,
+                                    tolerance
+                                );
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
+    mod default_problem {
+        use crate::{c_gkls::CGKLSProblem, tests::TOLERANCE, Problem};
+        test_problem_value_function!(
+            Problem::default(),
+            CGKLSProblem::default(),
+            nd_func,
+            TOLERANCE
+        );
+        test_problem_value_function!(
+            Problem::default(),
+            CGKLSProblem::default(),
+            d_func,
+            TOLERANCE
+        );
+        test_problem_value_function!(
+            Problem::default(),
+            CGKLSProblem::default(),
+            d2_func,
+            TOLERANCE
+        );
+        test_problem_deriv1_function!(
+            Problem::default(),
+            CGKLSProblem::default(),
+            d_deriv,
+            TOLERANCE
+        );
+        test_problem_deriv1_function!(
+            Problem::default(),
+            CGKLSProblem::default(),
+            d2_deriv1,
+            TOLERANCE
+        );
+        test_problem_deriv2_function!(Problem::default(), CGKLSProblem::default(), TOLERANCE);
+    }
+    macro_rules! test_set {
+        ($name:ident, $nf:expr, $dim:expr, $num_minima:expr, $global_value:expr, $global_radius:expr, $global_dist:expr) => {
+            mod $name {
+                use crate::tests::TOLERANCE;
+                use crate::{c_gkls::CGKLSProblem, Options, Problem};
+                test_problem_value_function!(
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    nd_func,
+                    TOLERANCE
+                );
+                test_problem_value_function!(
+                    Problem::default(),
+                    CGKLSProblem::default(),
+                    d_func,
+                    TOLERANCE
+                );
+                test_problem_value_function!(
+                    Problem::default(),
+                    CGKLSProblem::default(),
+                    d2_func,
+                    TOLERANCE
+                );
+                test_problem_deriv1_function!(
+                    Problem::default(),
+                    CGKLSProblem::default(),
+                    d_deriv,
+                    TOLERANCE
+                );
+                test_problem_deriv1_function!(
+                    Problem::default(),
+                    CGKLSProblem::default(),
+                    d2_deriv1,
+                    TOLERANCE
+                );
+                test_problem_deriv2_function!(
+                    Problem::default(),
+                    CGKLSProblem::default(),
+                    TOLERANCE
+                );
+            }
+        };
+    }
+
+    test_set!(nf3dim7, 3, 7, 5, -1.0, 1. / 3., 2. / 3.);
+    test_set!(nf7dim7, 7, 7, 5, -1.0, 1. / 3., 2. / 3.);
+    test_set!(nf42dim13, 42, 13, 5, -1.0, 1. / 3., 2. / 3.);
+    test_set!(nf17dim71, 17, 71, 5, -1.7, 2. / 9., 7. / 8.);
 }

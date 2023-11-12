@@ -1,4 +1,4 @@
-use std::ffi::c_double;
+use std::{ffi::c_double, sync::MutexGuard};
 
 use crate::{Domain, GKLSError, Options};
 
@@ -158,9 +158,9 @@ impl CGKLSProblem {
         };
     }
 
-    // Take pointers as an input to force the need to still have the lock acquired when
-    // deallocating the problem
-    fn deallocate_problem(_pointers: &PointersGKLS) {
+    // Take pointers guard as an input to force the need to still have the lock
+    // acquired when deallocating the problem
+    fn deallocate_problem(_pointers: MutexGuard<PointersGKLS>) {
         unsafe {
             GKLS_domain_free();
             GKLS_free();
@@ -168,76 +168,76 @@ impl CGKLSProblem {
     }
 
     pub(crate) fn nd_func(&self, x: &[f64]) -> f64 {
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         let result = unsafe { GKLS_ND_func(x.as_ptr()) };
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         result
     }
 
     pub(crate) fn d_func(&self, x: &[f64]) -> f64 {
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         let result = unsafe { GKLS_D_func(x.as_ptr()) };
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         result
     }
 
     /// evaluation of a D2-type test function
     pub(crate) fn d2_func(&self, x: &[f64]) -> f64 {
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         let result = unsafe { GKLS_D2_func(x.as_ptr()) };
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         result
     }
 
     /// first order partial derivative of the D-typed test function
     pub(crate) fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         let result = unsafe { GKLS_D_deriv(var_j, x.as_ptr()) };
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         result
     }
     /// first order partial derivative of the D2-typed test function
     pub(crate) fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         let result = unsafe { GKLS_D2_deriv1(var_j, x.as_ptr()) };
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         result
     }
     /// second order partial derivative of the D2-typed test function
     pub(crate) fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         let result = unsafe { GKLS_D2_deriv2(var_j, var_k, x.as_ptr()) };
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         result
     }
     /// gradient of the D-type test function
     fn d_gradient(&self, x: &[f64]) -> Vec<f64> {
         let mut g: Vec<f64> = Vec::new();
         g.resize(self.dim, f64::NAN);
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         unsafe {
             GKLS_D_gradient(x.as_ptr(), g.as_mut_ptr());
         }
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         g
     }
     /// gradient of the D2-type test function fn `GKLS_D2_hessian`  (double *, double **) -> i32; // Hessian of the D2-type test function
     pub(crate) fn d2_gradient(&self, x: &[f64]) -> Vec<f64> {
         let mut g: Vec<f64> = Vec::new();
         g.resize(self.dim, f64::NAN);
-        let pointers = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         unsafe {
             GKLS_D2_gradient(x.as_ptr(), g.as_mut_ptr());
         }
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         g
     }
     pub(crate) fn d2_hessian(&self, x: &[f64]) -> Vec<Vec<f64>> {
@@ -247,12 +247,12 @@ impl CGKLSProblem {
         for row in &mut h {
             row_pointers.push(row.as_mut_ptr());
         }
-        let pointers: &mut PointersGKLS = &mut GLOBAL_CVARIABLES.lock().unwrap();
-        self.allocate_problem(pointers);
+        let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
+        self.allocate_problem(&mut pointers_guard);
         unsafe {
             GKLS_D2_hessian(x.as_ptr(), row_pointers.as_ptr());
         }
-        Self::deallocate_problem(pointers);
+        Self::deallocate_problem(pointers_guard);
         h
     }
 }

@@ -1,8 +1,8 @@
 pub struct Ranf {
     long_lag: usize,
     short_lag: usize,
-    separation: usize,
-    quality: usize,
+    _separation: usize,
+    _quality: usize,
     size: usize,
     ran_u: Vec<f64>, // generator state
     counter: usize,
@@ -16,20 +16,21 @@ impl Default for Ranf {
 }
 
 impl Ranf {
+    #[must_use]
     pub fn new(
         long_lag: usize,
         short_lag: usize,
-        separation: usize,
-        quality: usize,
+        _separation: usize,
+        _quality: usize,
         size: usize,
         seed: i64,
     ) -> Self {
-        let ran_u = Self::initialize_state(long_lag, short_lag, separation, size, seed);
+        let ran_u = Self::initialize_state(long_lag, short_lag, _separation, size, seed);
         let mut generator = Self {
             long_lag,
             short_lag,
-            separation,
-            quality,
+            _separation,
+            _quality,
             size,
             ran_u,
             rnd_num: vec![0.0; size],
@@ -58,7 +59,7 @@ impl Ranf {
             ul[j] = 0.0; // bootstrap the buffer
             ss += ss;
             if ss >= 1.0 {
-                ss -= 2.0f64.mul_add(-ulp, 1.0); // cyclic shift of 51 bits
+                ss -= 1.0 - 2.0 * ulp; // cyclic shift of 51 bits
             }
         }
         for j in long_lag..long_lag + long_lag - 1 {
@@ -193,3 +194,5 @@ impl Ranf {
 fn mod_sum(x: f64, y: f64) -> f64 {
     (x + y) - (x + y).floor()
 }
+
+// TODO: test ranf with c implementation
