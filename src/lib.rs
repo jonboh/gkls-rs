@@ -175,7 +175,7 @@ impl Problem {
         {
             return Err(GKLSError::GlobalDist);
         }
-        if global_radius >= 0.5 * global_dist + options.precision
+        if global_radius >= 0.5f64.mul_add(global_dist, options.precision)
             || global_radius <= options.precision
         {
             return Err(GKLSError::GlobalRadius);
@@ -188,7 +188,7 @@ impl Problem {
         minima: &mut Minima,
         glob: &mut GlobalMinima,
         global_value: f64,
-        global_dist: f64,
+        _global_dist: f64,
         global_radius: f64,
         options: &Options,
         rng: ranf::Ranf,
@@ -250,7 +250,7 @@ impl Problem {
         for i in 2..num_minima {
             let random = rng.gen::<f64>();
             temp_d1 = norm(&minima.local_min[0], &minima.local_min[i]);
-            temp_min = (minima.rho[i] - temp_d1).powi(2) + minima.f[0];
+            temp_min = (minima.rho[i] - temp_d1).mul_add(minima.rho[i] - temp_d1, minima.f[0]);
             temp_d1 = (1.0 + random) * minima.rho[i];
             temp_d2 = random * (temp_min - global_value);
             if temp_d2 < temp_d1 {
@@ -312,35 +312,36 @@ impl Problem {
         let mut rng = ranf::Ranf::new(100, 37, 70, 1009, 1009, seed.try_into().unwrap());
         for i in 0..dim {
             let r = rng.gen::<f64>();
-            minima.local_min[0][i] = domain.left[i] + r * (domain.right[i] - domain.left[i]);
+            minima.local_min[0][i] = r.mul_add(domain.right[i] - domain.left[i], domain.left[i]);
         }
         rng.reset();
         minima.f[0] = options.paraboloid_min;
         let w_phi = PI * rng.gen::<f64>();
-        minima.local_min[1][0] = minima.local_min[0][0] + global_dist * f64::cos(w_phi);
+        minima.local_min[1][0] = global_dist.mul_add(f64::cos(w_phi), minima.local_min[0][0]);
         if minima.local_min[1][0] > domain.right[0] - options.precision
             || minima.local_min[1][0] < domain.left[0] + options.precision
         {
-            minima.local_min[1][0] = minima.local_min[0][0] - global_dist * f64::cos(w_phi);
+            minima.local_min[1][0] = global_dist.mul_add(-f64::cos(w_phi), minima.local_min[0][0]);
         }
         sin_phi = f64::sin(w_phi);
         for j in 1..dim - 1 {
             let w_2 = PI * rng.gen::<f64>();
             minima.local_min[1][j] =
-                minima.local_min[0][j] + global_dist * f64::cos(2.0 * w_2) * sin_phi;
+                (global_dist * f64::cos(2.0 * w_2)).mul_add(sin_phi, minima.local_min[0][j]);
             if minima.local_min[1][j] > domain.right[j] - options.precision
                 || minima.local_min[1][j] < domain.left[j] + options.precision
             {
                 minima.local_min[1][j] =
-                    minima.local_min[0][j] - global_dist * f64::cos(2.0 * w_2) * sin_phi;
+                    (global_dist * f64::cos(2.0 * w_2)).mul_add(-sin_phi, minima.local_min[0][j]);
             }
             sin_phi *= f64::sin(2.0 * w_2);
         }
-        minima.local_min[1][dim - 1] = minima.local_min[0][dim - 1] + global_dist * sin_phi;
+        minima.local_min[1][dim - 1] = global_dist.mul_add(sin_phi, minima.local_min[0][dim - 1]);
         if minima.local_min[1][dim - 1] > domain.right[dim - 1] - options.precision
             || minima.local_min[1][dim - 1] < domain.left[dim - 1] + options.precision
         {
-            minima.local_min[1][dim - 1] = minima.local_min[0][dim - 1] - global_dist * sin_phi;
+            minima.local_min[1][dim - 1] =
+                global_dist.mul_add(-sin_phi, minima.local_min[0][dim - 1]);
         }
         minima.f[1] = global_value;
         for i in 0..num_minima {
@@ -357,8 +358,9 @@ impl Problem {
                 loop {
                     rng.reset();
                     for j in 0..dim {
-                        minima.local_min[i][j] =
-                            domain.left[j] + rng.gen::<f64>() * (domain.right[j] - domain.left[j]);
+                        minima.local_min[i][j] = rng
+                            .gen::<f64>()
+                            .mul_add(domain.right[j] - domain.left[j], domain.left[j]);
                     }
                     if (global_radius + gap) - norm(&minima.local_min[i], &minima.local_min[1])
                         < options.precision
@@ -413,13 +415,13 @@ impl Problem {
         let mut norm_: f64;
         if index == self.num_minima {
             norm_ = norm(&self.minima.local_min[0], x);
-            return norm_ * norm_ + self.minima.f[0];
+            return norm_.mul_add(norm_, self.minima.f[0]);
         }
         if norm(x, &self.minima.local_min[index]) < self.options.precision {
             return self.minima.f[index];
         }
         norm_ = norm(&self.minima.local_min[0], &self.minima.local_min[index]);
-        let a = norm_ * norm_ + self.minima.f[0] - self.minima.f[index];
+        let a = norm_.mul_add(norm_, self.minima.f[0]) - self.minima.f[index];
         let rho = self.minima.rho[index];
         norm_ = norm(&self.minima.local_min[index], x);
         let mut scal = 0.0;
@@ -430,7 +432,8 @@ impl Problem {
         ) {
             scal += (val - local_min_index) * (local_min0 - local_min_index);
         }
-        (1.0 - 2.0 / rho * scal / norm_ + a / rho.powi(2)) * norm_.powi(2) + self.minima.f[index]
+        (1.0 - 2.0 / rho * scal / norm_ + a / rho.powi(2))
+            .mul_add(norm_.powi(2), self.minima.f[index])
     }
 
     #[must_use]
@@ -451,13 +454,13 @@ impl Problem {
         }
         if index == self.num_minima {
             norm_ = norm(&self.minima.local_min[0], x);
-            return norm_ * norm_ + self.minima.f[0];
+            return norm_.mul_add(norm_, self.minima.f[0]);
         }
         if norm(x, &self.minima.local_min[index]) < self.options.precision {
             return self.minima.f[index];
         }
         norm_ = norm(&self.minima.local_min[0], &self.minima.local_min[index]);
-        let a = norm_ * norm_ + self.minima.f[0] - self.minima.f[index];
+        let a = norm_.mul_add(norm_, self.minima.f[0]) - self.minima.f[index];
         let rho = self.minima.rho[index];
         norm_ = norm(&self.minima.local_min[index], x);
         scal = 0.0;
@@ -468,9 +471,10 @@ impl Problem {
         ) {
             scal += (val - local_min_index) * (local_min0 - local_min_index);
         }
-        (2.0 / rho.powi(2) * scal / norm_ - 2.0 * a / rho.powi(3)) * norm_.powi(3)
-            + (1.0 - 4.0 * scal / norm_ / rho + 3.0 * a / rho.powi(2)) * norm_.powi(2)
-            + self.minima.f[index]
+        (2.0 / rho.powi(2) * scal / norm_ - 2.0 * a / rho.powi(3)).mul_add(
+            norm_.powi(3),
+            (1.0 - 4.0 * scal / norm_ / rho + 3.0 * a / rho.powi(2)) * norm_.powi(2),
+        ) + self.minima.f[index]
     }
 
     #[must_use]
@@ -490,13 +494,13 @@ impl Problem {
         }
         if index == self.num_minima {
             norm_ = norm(&self.minima.local_min[0], x);
-            return norm_ * norm_ + self.minima.f[0];
+            return norm_.mul_add(norm_, self.minima.f[0]);
         }
         if norm(x, &self.minima.local_min[index]) < self.options.precision {
             return self.minima.f[index];
         }
         norm_ = norm(&self.minima.local_min[0], &self.minima.local_min[index]);
-        let a = norm_ * norm_ + self.minima.f[0] - self.minima.f[index];
+        let a = norm_.mul_add(norm_, self.minima.f[0]) - self.minima.f[index];
         let rho = self.minima.rho[index];
         norm_ = norm(&self.minima.local_min[index], x);
         scal = 0.0;
@@ -511,11 +515,15 @@ impl Problem {
             - self.delta / 2.0)
             * norm_.powi(2)
             / rho.powi(2);
-        let term2: f64 =
-            (16.0 * scal / norm_ / rho - 15.0 * a / rho / rho - 3.0 + 1.5 * self.delta) * norm_
-                / rho;
-        let term3: f64 =
-            -12.0 * scal / norm_ / rho + 10.0 * a / rho.powi(2) + 3.0 - 1.5 * self.delta;
+        let term2: f64 = 1.5f64.mul_add(
+            self.delta,
+            16.0 * scal / norm_ / rho - 15.0 * a / rho / rho - 3.0,
+        ) * norm_
+            / rho;
+        let term3: f64 = 1.5f64.mul_add(
+            -self.delta,
+            -12.0 * scal / norm_ / rho + 10.0 * a / rho.powi(2) + 3.0,
+        );
         let term4: f64 = 0.5 * self.delta * norm_ * norm_;
         (term1 + term2 + term3) * norm_.powi(3) / rho + term4 + self.minima.f[index]
     }
@@ -545,7 +553,7 @@ impl Problem {
             return 0.0;
         }
         let mut norm_ = norm(&self.minima.local_min[0], &self.minima.local_min[index]);
-        let a = norm_ * norm_ + self.minima.f[0] - self.minima.f[index];
+        let a = norm_.mul_add(norm_, self.minima.f[0]) - self.minima.f[index];
         let rho = self.minima.rho[index];
         norm_ = norm(&self.minima.local_min[index], x);
         let mut scal = 0.0;
@@ -557,15 +565,18 @@ impl Problem {
             scal += (*val - local_min_index) * (local_min0 - local_min_index);
         }
         let dif = x[var_j] - self.minima.local_min[index][var_j];
-        let h = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j]) * norm_
-            - scal * dif / norm_;
-        h * (2.0 / rho.powi(2) * norm_ - 4.0 / rho)
-            + dif
-                * (6.0 / rho.powi(2) * scal
-                    - 6.0 / rho.powi(3) * a * norm_
-                    - 8.0 / rho / norm_ * scal
-                    + 6.0 / rho.powi(2) * a
-                    + 2.0)
+        let h = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j])
+            .mul_add(norm_, -scal * dif / norm_);
+        h.mul_add(
+            (2.0 / rho.powi(2)).mul_add(norm_, -4.0 / rho),
+            dif * ((6.0 / rho.powi(2)).mul_add(
+                a,
+                (8.0 / rho / norm_).mul_add(
+                    -scal,
+                    (6.0 / rho.powi(2)).mul_add(scal, -6.0 / rho.powi(3) * a * norm_),
+                ),
+            ) + 2.0),
+        )
     }
 
     #[must_use]
@@ -593,7 +604,7 @@ impl Problem {
             return 0.0;
         }
         let mut norm_ = norm(&self.minima.local_min[0], &self.minima.local_min[index]);
-        let a = norm_ * norm_ + self.minima.f[0] - self.minima.f[index];
+        let a = norm_.mul_add(norm_, self.minima.f[0]) - self.minima.f[index];
         let rho = self.minima.rho[index];
         norm_ = norm(&self.minima.local_min[index], x);
         let mut scal = 0.0;
@@ -605,22 +616,30 @@ impl Problem {
             scal += (*val - local_min_index) * (local_min0 - local_min_index);
         }
         let dif = x[var_j] - self.minima.local_min[index][var_j];
-        let h = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j]) * norm_
-            - scal * dif / norm_;
-        h * norm_ / rho.powi(2) * (-6.0 * norm_.powi(2) / rho.powi(2) + 16.0 * norm_ / rho - 12.0)
-            + dif
-                * norm_
-                * ((-30.0 / rho / norm_ * scal + 30.0 / rho.powi(2) * a + 5.0 - 2.5 * self.delta)
-                    / rho.powi(3)
-                    * norm_.powi(2)
-                    + (64.0 / rho / norm_ * scal - 60.0 / rho.powi(2) * a - 12.0
-                        + 6.0 * self.delta)
-                        / rho.powi(2)
-                        * norm_
-                    + (-36.0 / rho / norm_ * scal + 30.0 / rho.powi(2) * a + 9.0
-                        - 4.5 * self.delta)
-                        / rho)
-            + dif * self.delta
+        let h = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j])
+            .mul_add(norm_, -scal * dif / norm_);
+        dif.mul_add(
+            self.delta,
+            (h * norm_ / rho.powi(2)).mul_add(
+                -6.0 * norm_.powi(2) / rho.powi(2) + 16.0 * norm_ / rho - 12.0,
+                dif * norm_
+                    * ((2.5f64.mul_add(
+                        -self.delta,
+                        (-30.0 / rho / norm_).mul_add(scal, 30.0 / rho.powi(2) * a) + 5.0,
+                    ) / rho.powi(3))
+                    .mul_add(
+                        norm_.powi(2),
+                        6.0f64.mul_add(
+                            self.delta,
+                            (64.0 / rho / norm_).mul_add(scal, -60.0 / rho.powi(2) * a) - 12.0,
+                        ) / rho.powi(2)
+                            * norm_,
+                    ) + 4.5f64.mul_add(
+                        -self.delta,
+                        (-36.0 / rho / norm_).mul_add(scal, 30.0 / rho.powi(2) * a) + 9.0,
+                    ) / rho),
+            ),
+        )
     }
 
     #[must_use]
@@ -660,7 +679,7 @@ impl Problem {
             return 0.0;
         }
         let mut norm_ = norm(&self.minima.local_min[0], &self.minima.local_min[index]);
-        let a = norm_ * norm_ + self.minima.f[0] - self.minima.f[index];
+        let a = norm_.mul_add(norm_, self.minima.f[0]) - self.minima.f[index];
         let rho = self.minima.rho[index];
         norm_ = norm(&self.minima.local_min[index], x);
         let mut scal = 0.0;
@@ -673,46 +692,76 @@ impl Problem {
         }
         let difj = x[var_j] - self.minima.local_min[index][var_j];
         let difk = x[var_k] - self.minima.local_min[index][var_k];
-        let hj = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j]) * norm_
-            - scal * difj / norm_;
-        let hk = (self.minima.local_min[0][var_k] - self.minima.local_min[index][var_k]) * norm_
-            - scal * difk / norm_;
+        let hj = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j])
+            .mul_add(norm_, -scal * difj / norm_);
+        let hk = (self.minima.local_min[0][var_k] - self.minima.local_min[index][var_k])
+            .mul_add(norm_, -scal * difk / norm_);
         let mut dh = (self.minima.local_min[0][var_j] - self.minima.local_min[index][var_j]) * difk
             / norm_
             - hk * difj / norm_.powi(2);
         if the_same {
             dh -= scal / norm_;
         }
-        let mut dq_jk = -6.0 / rho.powi(4) * (dh * norm_.powi(3) + 3.0 * hj * difk * norm_)
-            - 30.0 / rho.powi(4) * hk * difj * norm_
-            + 15.0 / rho.powi(3)
-                * (-6.0 / rho * scal / norm_ + 6.0 / rho.powi(2) * a + 1.0 - 0.5 * self.delta)
-                * difj
-                * difk
-                * norm_
-            + 16.0 / rho.powi(3) * (dh * norm_.powi(2) + 2.0 * hj * difk)
-            + 64.0 / rho.powi(3) * hk * difj
-            + 8.0 / rho.powi(2)
-                * (16.0 / rho * scal / norm_ - 15.0 / rho.powi(2) * a - 3.0 + 1.5 * self.delta)
-                * difj
-                * difk
-            - 12.0 / rho.powi(2) * (dh * norm_ + hj * difk / norm_)
-            - 36.0 / rho.powi(2) * hk * difj / norm_
+        let mut dq_jk = (12.0 / rho.powi(2)).mul_add(
+            -dh.mul_add(norm_, hj * difk / norm_),
+            (8.0 / rho.powi(2)
+                * 1.5f64.mul_add(
+                    self.delta,
+                    (15.0 / rho.powi(2)).mul_add(-a, 16.0 / rho * scal / norm_) - 3.0,
+                )
+                * difj)
+                .mul_add(
+                    difk,
+                    (64.0 / rho.powi(3) * hk).mul_add(
+                        difj,
+                        (16.0 / rho.powi(3)).mul_add(
+                            dh.mul_add(norm_.powi(2), 2.0 * hj * difk),
+                            (15.0 / rho.powi(3)
+                                * 0.5f64.mul_add(
+                                    -self.delta,
+                                    (6.0 / rho.powi(2)).mul_add(a, -6.0 / rho * scal / norm_) + 1.0,
+                                )
+                                * difj
+                                * difk)
+                                .mul_add(
+                                    norm_,
+                                    (-6.0 / rho.powi(4)).mul_add(
+                                        dh.mul_add(norm_.powi(3), 3.0 * hj * difk * norm_),
+                                        -30.0 / rho.powi(4) * hk * difj * norm_,
+                                    ),
+                                ),
+                        ),
+                    ),
+                ),
+        ) - 36.0 / rho.powi(2) * hk * difj / norm_
             + 3.0 / rho
-                * (-12.0 / rho * scal / norm_ + 10.0 / rho.powi(2) * a + 3.0 - 1.5 * self.delta)
+                * 1.5f64.mul_add(
+                    -self.delta,
+                    (10.0 / rho.powi(2)).mul_add(a, -12.0 / rho * scal / norm_) + 3.0,
+                )
                 * difj
                 * difk
                 / norm_;
         if the_same {
-            dq_jk = dq_jk
-                + 5.0 * norm_.powi(3) / rho.powi(3) // <- rho.powi(4) -> rho.powi(4)
-                    * (-6.0 / rho * scal / norm_ + 6.0 / rho.powi(2) * a + 1.0 - 0.5 * self.delta)
-                + 4.0 * norm_.powi(2) / rho.powi(2)
-                    * (16.0 / rho * scal / norm_ - 15.0 / rho.powi(2) * a - 3.0 + 1.5 * self.delta)
-                + norm_ / rho
-                    * (-12.0 / rho * scal / norm_ + 10.0 / rho.powi(2) * a + 3.0
-                        - 1.5 * self.delta)
-                + self.delta;
+            dq_jk = (norm_ / rho).mul_add(
+                1.5f64.mul_add(
+                    -self.delta,
+                    (10.0 / rho.powi(2)).mul_add(a, -12.0 / rho * scal / norm_) + 3.0,
+                ),
+                (4.0 * norm_.powi(2) / rho.powi(2)).mul_add(
+                    1.5f64.mul_add(
+                        self.delta,
+                        (15.0 / rho.powi(2)).mul_add(-a, 16.0 / rho * scal / norm_) - 3.0,
+                    ),
+                    (5.0 * norm_.powi(3) / rho.powi(3)).mul_add(
+                        0.5f64.mul_add(
+                            -self.delta,
+                            (6.0 / rho.powi(2)).mul_add(a, -6.0 / rho * scal / norm_) + 1.0,
+                        ),
+                        dq_jk,
+                    ),
+                ),
+            ) + self.delta;
         }
         dq_jk
     }
@@ -720,9 +769,6 @@ impl Problem {
     // TODO: add gradient and hessian convenience functions
 }
 
-// NOTE: tests need to be run in a single thread due to she sharing of global variables in the C
-// implementation of GKLS. use `cargo test -- --test-threads=1`
-// TODO: add lock to prevent this
 #[cfg(test)]
 mod default_problem {
     use crate::{c_gkls::CGKLSProblem, Problem};

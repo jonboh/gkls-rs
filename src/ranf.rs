@@ -43,7 +43,7 @@ impl Ranf {
         long_lag: usize,
         short_lag: usize,
         separation: usize,
-        size: usize,
+        _size: usize,
         seed: i64,
     ) -> Vec<f64> {
         let mut ran_u = vec![0.0; long_lag];
@@ -58,7 +58,7 @@ impl Ranf {
             ul[j] = 0.0; // bootstrap the buffer
             ss += ss;
             if ss >= 1.0 {
-                ss -= 1.0 - 2.0 * ulp; // cyclic shift of 51 bits
+                ss -= 2.0f64.mul_add(-ulp, 1.0); // cyclic shift of 51 bits
             }
         }
         for j in long_lag..long_lag + long_lag - 1 {
