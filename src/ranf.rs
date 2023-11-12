@@ -23,7 +23,7 @@ impl Ranf {
         quality: usize,
         size: usize,
         seed: i64,
-    ) -> Ranf {
+    ) -> Self {
         let ran_u = Self::initialize_state(long_lag, short_lag, separation, size, seed);
         let mut generator = Self {
             long_lag,
@@ -52,7 +52,7 @@ impl Ranf {
         let mut u = vec![0.0; long_lag + long_lag - 1];
         let mut ul = vec![0.0; long_lag + long_lag - 1];
         let ulp = 2.0f64.powi(-52); // (1.0 / (1 << 30)) / (1 << 22); // 2 to the -52
-        let mut ss: f64 = 2.0 * ulp * ((seed & 0x3fffffff) + 2) as f64;
+        let mut ss: f64 = 2.0 * ulp * ((seed & 0x3fff_ffff) + 2) as f64;
         for j in 0..long_lag {
             u[j] = ss;
             ul[j] = 0.0; // bootstrap the buffer
@@ -67,7 +67,7 @@ impl Ranf {
         }
         u[1] += ulp;
         ul[1] = ulp; // make u[1] (and only u[1]) "odd"
-        s = seed & 0x3fffffff;
+        s = seed & 0x3fff_ffff;
         t = TryInto::<i64>::try_into(separation).unwrap() - 1;
         while t > 0 {
             for j in (1..long_lag).rev() {
@@ -90,7 +90,7 @@ impl Ranf {
                 }
             }
             if s % 2 == 1 {
-                for j in (1..long_lag + 1).rev() {
+                for j in (1..=long_lag).rev() {
                     ul[j] = ul[j - 1];
                     u[j] = u[j - 1];
                 }
@@ -101,18 +101,14 @@ impl Ranf {
                     u[short_lag] = mod_sum(u[short_lag], u[long_lag]);
                 }
             }
-            if s != 0 {
-                s >>= 1;
-            } else {
+            if s == 0 {
                 t -= 1;
+            } else {
+                s >>= 1;
             }
         }
-        for j in 0..short_lag {
-            ran_u[j + long_lag - short_lag] = u[j];
-        }
-        for j in short_lag..long_lag {
-            ran_u[j - short_lag] = u[j];
-        }
+        ran_u[(long_lag - short_lag)..long_lag].copy_from_slice(&u[..short_lag]);
+        ran_u[..(long_lag - short_lag)].copy_from_slice(&u[short_lag..long_lag]);
         ran_u
     }
 
@@ -181,12 +177,12 @@ impl Ranf {
 
     pub fn reset(&mut self) {
         self.ranf_array();
-        self.counter = 0
+        self.counter = 0;
     }
 
     pub fn gen<T>(&mut self) -> f64 {
         if self.counter == self.size {
-            self.reset()
+            self.reset();
         }
         let num = self.rnd_num[self.counter];
         self.counter += 1;
@@ -196,8 +192,4 @@ impl Ranf {
 
 fn mod_sum(x: f64, y: f64) -> f64 {
     (x + y) - (x + y).floor()
-}
-
-fn is_odd(s: i64) -> bool {
-    s & 1 != 0
 }

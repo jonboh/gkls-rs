@@ -170,7 +170,9 @@ impl Problem {
                 Some(m) => Some(f64::min(m, val)),
             })
             .unwrap();
-        if global_dist >= 0.5 * min_side - options.precision || global_dist <= options.precision {
+        if global_dist >= 0.5f64.mul_add(min_side, -options.precision)
+            || global_dist <= options.precision
+        {
             return Err(GKLSError::GlobalDist);
         }
         if global_radius >= 0.5 * global_dist + options.precision
@@ -283,7 +285,7 @@ impl Problem {
         global_value: f64,
         global_radius: f64,
         global_dist: f64,
-    ) -> Result<Problem, GKLSError> {
+    ) -> Result<Self, GKLSError> {
         let mut sin_phi: f64;
         let gap = global_radius;
         if !(1..=100).contains(&nf) {
@@ -306,7 +308,7 @@ impl Problem {
             peak: vec![0.0; num_minima],
             rho: vec![0.0; num_minima],
         };
-        let seed = (nf - 1) + (num_minima - 1) * 100 + dim * 1000000;
+        let seed = (nf - 1) + (num_minima - 1) * 100 + dim * 1_000_000;
         let mut rng = ranf::Ranf::new(100, 37, 70, 1009, 1009, seed.try_into().unwrap());
         for i in 0..dim {
             let r = rng.gen::<f64>();
@@ -395,6 +397,7 @@ impl Problem {
         })
     }
 
+    #[must_use]
     pub fn nd_func(&self, x: &[f64]) -> f64 {
         let mut index: usize = 0;
         for (val, left, right) in izip!(x, self.domain.left.iter(), self.domain.right.iter()) {
@@ -430,6 +433,7 @@ impl Problem {
         (1.0 - 2.0 / rho * scal / norm_ + a / rho.powi(2)) * norm_.powi(2) + self.minima.f[index]
     }
 
+    #[must_use]
     pub fn d_func(&self, x: &[f64]) -> f64 {
         let mut norm_: f64;
         let mut scal: f64;
@@ -469,6 +473,7 @@ impl Problem {
             + self.minima.f[index]
     }
 
+    #[must_use]
     pub fn d2_func(&self, x: &[f64]) -> f64 {
         let mut norm_: f64;
         let mut scal: f64;
@@ -515,13 +520,13 @@ impl Problem {
         (term1 + term2 + term3) * norm_.powi(3) / rho + term4 + self.minima.f[index]
     }
 
+    #[must_use]
     pub fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
-        } else {
-            var_j -= 1;
         }
+        var_j -= 1;
         for (val, left, right) in izip!(x, self.domain.left.iter(), self.domain.right.iter()) {
             if *val < left - self.options.precision || *val > right + self.options.precision {
                 return self.options.max_value;
@@ -563,13 +568,13 @@ impl Problem {
                     + 2.0)
     }
 
+    #[must_use]
     pub fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
         if var_j == 0 || var_j >= self.dim {
             return self.options.max_value;
-        } else {
-            var_j -= 1;
         }
+        var_j -= 1;
         for (val, left, right) in izip!(x, self.domain.left.iter(), self.domain.right.iter()) {
             if *val < left - self.options.precision || *val > right + self.options.precision {
                 return self.options.max_value;
@@ -618,6 +623,7 @@ impl Problem {
             + dif * self.delta
     }
 
+    #[must_use]
     pub fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
         let mut var_k = var_k;
@@ -644,16 +650,14 @@ impl Problem {
         if index == self.num_minima {
             if the_same {
                 return 2.0;
-            } else {
-                return 0.0;
             }
+            return 0.0;
         }
         if norm(x, &self.minima.local_min[index]) < self.options.precision {
             if the_same {
                 return self.delta;
-            } else {
-                return 0.0;
             }
+            return 0.0;
         }
         let mut norm_ = norm(&self.minima.local_min[0], &self.minima.local_min[index]);
         let a = norm_ * norm_ + self.minima.f[0] - self.minima.f[index];
