@@ -62,7 +62,7 @@ mod cbinding {
         pub gkls_global_value: &'static mut f64,
     }
 
-    // GLOBAL_CVARIABLES Mutex makes sure that the global stare of GKLS is not altered while
+    // GLOBAL_CVARIABLES Mutex makes sure that the global state of GKLS is not altered while
     // a computation is being performed. Each computation is expected to allocate and deallocate
     // the global state of GKLS. This is extremely bad performance wise, but we are only interested
     // in this binding for testing purposes. For performance a user should use the Rust
@@ -217,30 +217,39 @@ impl CGKLSProblem {
         result
     }
     /// gradient of the D-type test function
-    fn d_gradient(&self, x: &[f64]) -> Vec<f64> {
+    pub(crate) fn d_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
         let mut g: Vec<f64> = Vec::new();
         g.resize(self.dim, f64::NAN);
         let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
         self.allocate_problem(&mut pointers_guard);
-        unsafe {
-            GKLS_D_gradient(x.as_ptr(), g.as_mut_ptr());
-        }
+        let result = unsafe {
+            if 0 == GKLS_D_gradient(x.as_ptr(), g.as_mut_ptr()) {
+                Some(g)
+            } else {
+                None
+            }
+        };
         Self::deallocate_problem(pointers_guard);
-        g
+        result
     }
     /// gradient of the D2-type test function fn `GKLS_D2_hessian`  (double *, double **) -> i32; // Hessian of the D2-type test function
-    pub(crate) fn d2_gradient(&self, x: &[f64]) -> Vec<f64> {
+    pub(crate) fn d2_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
         let mut g: Vec<f64> = Vec::new();
         g.resize(self.dim, f64::NAN);
         let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
         self.allocate_problem(&mut pointers_guard);
-        unsafe {
-            GKLS_D2_gradient(x.as_ptr(), g.as_mut_ptr());
-        }
+        let result = unsafe {
+            if 0 == GKLS_D2_gradient(x.as_ptr(), g.as_mut_ptr()) {
+                Some(g)
+            } else {
+                None
+            }
+        };
         Self::deallocate_problem(pointers_guard);
-        g
+        result
     }
-    pub(crate) fn d2_hessian(&self, x: &[f64]) -> Vec<Vec<f64>> {
+
+    pub(crate) fn d2_hessian(&self, x: &[f64]) -> Option<Vec<Vec<f64>>> {
         let mut h: Vec<Vec<f64>> = Vec::new();
         h.resize(self.dim, (0..self.dim).map(|_| f64::NAN).collect());
         let mut row_pointers: Vec<*mut c_double> = Vec::with_capacity(self.dim);
@@ -249,10 +258,14 @@ impl CGKLSProblem {
         }
         let mut pointers_guard = GLOBAL_CVARIABLES.lock().unwrap();
         self.allocate_problem(&mut pointers_guard);
-        unsafe {
-            GKLS_D2_hessian(x.as_ptr(), row_pointers.as_ptr());
-        }
+        let result = unsafe {
+            if 0 == GKLS_D2_hessian(x.as_ptr(), row_pointers.as_ptr()) {
+                Some(h)
+            } else {
+                None
+            }
+        };
         Self::deallocate_problem(pointers_guard);
-        h
+        result
     }
 }

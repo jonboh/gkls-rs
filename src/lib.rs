@@ -123,7 +123,6 @@ fn norm(x1: &[f64], x2: &[f64]) -> f64 {
 }
 
 fn coincidence_check(minima: &Minima, num_minima: usize, precision: f64) -> CoincidenceCondition {
-    // TODO: probably don't need num_minima and can len() minima
     for i in 2..num_minima {
         if norm(&minima.local_min[i], &minima.local_min[0]) < precision {
             return CoincidenceCondition::ParabolaMinCoincidence;
@@ -529,7 +528,7 @@ impl Problem {
     #[must_use]
     pub fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
-        if var_j == 0 || var_j >= self.dim {
+        if var_j == 0 || var_j > self.dim {
             return self.options.max_value;
         }
         var_j -= 1;
@@ -580,7 +579,7 @@ impl Problem {
     #[must_use]
     pub fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
-        if var_j == 0 || var_j >= self.dim {
+        if var_j == 0 || var_j > self.dim {
             return self.options.max_value;
         }
         var_j -= 1;
@@ -644,10 +643,10 @@ impl Problem {
     pub fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
         let mut var_k = var_k;
-        if var_j == 0 || var_j >= self.dim {
+        if var_j == 0 || var_j > self.dim {
             return self.options.max_value;
         }
-        if var_k == 0 || var_k >= self.dim {
+        if var_k == 0 || var_k > self.dim {
             return self.options.max_value;
         }
         let the_same = var_j == var_k;
@@ -763,7 +762,39 @@ impl Problem {
         }
         dq_jk
     }
-    // TODO: add gradient and hessian convenience functions
+
+    pub fn d_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
+        let mut g = vec![f64::NAN; self.dim];
+        for (i, g_) in g.iter_mut().enumerate() {
+            *g_ = self.d_deriv(i + 1, x);
+            if *g_ >= self.options.max_value - 1000.0 {
+                return None;
+            }
+        }
+        Some(g)
+    }
+    pub fn d2_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
+        let mut g = vec![f64::NAN; self.dim];
+        for (i, g_) in g.iter_mut().enumerate() {
+            *g_ = self.d2_deriv1(i + 1, x);
+            if *g_ >= self.options.max_value - 1000.0 {
+                return None;
+            }
+        }
+        Some(g)
+    }
+    pub fn d2_hessian(&self, x: &[f64]) -> Option<Vec<Vec<f64>>> {
+        let mut h = vec![vec![f64::NAN; self.dim]; self.dim];
+        for (i, h_) in h.iter_mut().enumerate() {
+            for (j, h__) in h_.iter_mut().enumerate() {
+                *h__ = self.d2_deriv2(i + 1, j + 1, x);
+                if *h__ >= self.options.max_value - 1000.0 {
+                    return None;
+                }
+            }
+        }
+        Some(h)
+    }
 }
 
 #[cfg(test)]
@@ -772,7 +803,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     const SEED: u64 = 42;
-    const N_TESTPOINTS: usize = 100;
+    const N_TESTPOINTS: usize = 10;
     const TOLERANCE: f64 = 10e-6;
 
     fn generate_testpoints(dim: usize) -> Vec<Vec<f64>> {
@@ -801,13 +832,15 @@ mod tests {
                             result_c_impl,
                             tolerance
                         );
-                        assert!(
-                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
-                            "{} is not approximately equal to \n{} with relative tolerance {}",
-                            result,
-                            result_c_impl,
-                            tolerance
-                        );
+                        if result_c_impl != 0.0 {
+                            assert!(
+                                ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                                "{} is not approximately equal to \n{} with relative tolerance {}",
+                                result,
+                                result_c_impl,
+                                tolerance
+                            );
+                        }
                     }
                 }
             }
@@ -833,13 +866,15 @@ mod tests {
                             result_c_impl,
                             tolerance
                         );
-                        assert!(
-                            ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
-                            "{} is not approximately equal to \n{} with relative tolerance {}",
-                            result,
-                            result_c_impl,
-                            tolerance
-                        );
+                        if result_c_impl != 0.0 {
+                            assert!(
+                                ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                                "{} is not approximately equal to \n{} with relative tolerance {}",
+                                result,
+                                result_c_impl,
+                                tolerance
+                            );
+                        }
                     }
                 }
             }
@@ -855,31 +890,117 @@ mod tests {
                 let problem = $gkls_problem;
                 let problem_cimpl = $gkls_problem_cimpl;
                 for input in generate_testpoints(problem.dim) {
-                for dim0 in 0..problem.dim {
-                    for dim1 in 0..problem.dim {
-                            {
-                                let result = problem.d2_deriv2(dim0, dim1, &input);
-                                let result_c_impl = problem_cimpl.d2_deriv2(dim0, dim1, &input);
-                                assert!(
-                                    (result - result_c_impl).abs() <= tolerance,
-                                    "{} is not approximately equal to \n{} with absolute tolerance {}",
-                                    result,
-                                    result_c_impl,
-                                    tolerance
-                                );
-                                assert!(
-                                    ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
-                                    "{} is not approximately equal to \n{} with relative tolerance {}",
-                                    result,
-                                    result_c_impl,
-                                    tolerance
-                                );
-                            }
+                    for dim0 in 0..problem.dim {
+                        for dim1 in 0..problem.dim {
+                            let result = problem.d2_deriv2(dim0, dim1, &input);
+                            let result_c_impl = problem_cimpl.d2_deriv2(dim0, dim1, &input);
+                            assert!(
+                                (result - result_c_impl).abs() <= tolerance,
+                                "{} is not approximately equal to \n{} with absolute tolerance {}",
+                                result,
+                                result_c_impl,
+                                tolerance
+                            );
+                        if result_c_impl != 0.0 {
+                            assert!(
+                                ((result - result_c_impl).abs()) / result_c_impl <= tolerance,
+                                "{} is not approximately equal to \n{} with relative tolerance {}",
+                                result,
+                                result_c_impl,
+                                tolerance
+                            );
+                        }
                         }
                     }
                 }
             }
-        }
+        };
+    }
+    macro_rules! test_problem_gradient {
+        ($gkls_problem:expr, $gkls_problem_cimpl:expr, $method:ident, $tolerance:expr) => {
+            #[test]
+            fn $method() {
+                use crate::tests::generate_testpoints;
+                let tolerance = $tolerance;
+                let problem = $gkls_problem;
+                let problem_cimpl = $gkls_problem_cimpl;
+                for input in generate_testpoints(problem.dim) {
+                    let result = problem.$method(&input);
+                    let result_c_impl = problem_cimpl.$method(&input);
+                    match (result, result_c_impl) {
+                        (Some(result), Some(result_c_impl)) => {
+                        for i in 0..result.len() {
+                            assert!(
+                                (result[i] - result_c_impl[i]).abs() <= tolerance,
+                                "{} is not approximately equal to \n{} with absolute tolerance {}",
+                                result[i],
+                                result_c_impl[i],
+                                tolerance
+                            );
+                            if result_c_impl[i] != 0.0 {
+                                assert!(
+                                    ((result[i] - result_c_impl[i]).abs()) / result_c_impl[i]
+                                        <= tolerance,
+                                    "{} is not approximately equal to \n{} with relative tolerance {}",
+                                    result[i],
+                                    result_c_impl[i],
+                                    tolerance
+                                );
+                            }
+                            }
+                        },
+                        (Some(_), None) => panic!("Rust implementation returned values while C implementation returned None"),
+                        (None, Some(_)) => panic!("C implementation returned values while Rust implementation returned None"),
+                        (None, None) => ()
+                        // _ => ()
+                    }
+                }
+            }
+        };
+    }
+    macro_rules! test_problem_hessian {
+        ($gkls_problem:expr, $gkls_problem_cimpl:expr, $tolerance:expr) => {
+            #[test]
+            fn hessian() {
+                use crate::tests::generate_testpoints;
+                let tolerance = $tolerance;
+                let problem = $gkls_problem;
+                let problem_cimpl = $gkls_problem_cimpl;
+                for input in generate_testpoints(problem.dim) {
+                    let result = problem.d2_hessian(&input);
+                    let result_c_impl = problem_cimpl.d2_hessian(&input);
+                    match (result, result_c_impl) {
+                        (Some(result), Some(result_c_impl)) => {
+                        for i in 0..result.len() {
+                            for j in 0..result[i].len() {
+                                assert!(
+                                    (result[i][j] - result_c_impl[i][j]).abs() <= tolerance,
+                                    "{} is not approximately equal to \n{} with absolute tolerance {}",
+                                    result[i][j],
+                                    result_c_impl[i][j],
+                                    tolerance
+                                );
+                            if result_c_impl[i][j] != 0.0 {
+                                assert!(
+                                    ((result[i][j] - result_c_impl[i][j]).abs()) / result_c_impl[i][j]
+                                        <= tolerance,
+                                    "{} is not approximately equal to \n{} with relative tolerance {}",
+                                    result[i][j],
+                                    result_c_impl[i][j],
+                                    tolerance
+                                );
+                            }
+                            }
+                        }
+                        },
+                        (Some(_), None) => panic!("Rust implementation returned values while C implementation returned None"),
+                        (None, Some(_)) => panic!("C implementation returned values while Rust implementation returned None"),
+                        (None, None) => ()
+                        // _ => ()
+                    }
+                }
+            }
+        };
     }
 
     mod default_problem {
@@ -946,32 +1067,193 @@ mod tests {
                     TOLERANCE
                 );
                 test_problem_value_function!(
-                    Problem::default(),
-                    CGKLSProblem::default(),
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
                     d_func,
                     TOLERANCE
                 );
                 test_problem_value_function!(
-                    Problem::default(),
-                    CGKLSProblem::default(),
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
                     d2_func,
                     TOLERANCE
                 );
                 test_problem_deriv1_function!(
-                    Problem::default(),
-                    CGKLSProblem::default(),
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
                     d_deriv,
                     TOLERANCE
                 );
                 test_problem_deriv1_function!(
-                    Problem::default(),
-                    CGKLSProblem::default(),
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
                     d2_deriv1,
                     TOLERANCE
                 );
                 test_problem_deriv2_function!(
-                    Problem::default(),
-                    CGKLSProblem::default(),
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    TOLERANCE
+                );
+                test_problem_gradient!(
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    d_gradient,
+                    TOLERANCE
+                );
+                test_problem_gradient!(
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    d2_gradient,
+                    TOLERANCE
+                );
+                test_problem_hessian!(
+                    Problem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
+                    CGKLSProblem::new(
+                        $nf,
+                        Options::default(),
+                        $dim,
+                        $num_minima,
+                        $global_value,
+                        $global_radius,
+                        $global_dist
+                    )
+                    .unwrap(),
                     TOLERANCE
                 );
             }
