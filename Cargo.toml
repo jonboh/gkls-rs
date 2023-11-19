@@ -2,6 +2,15 @@
 name = "gkls-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["jonboh"]
+description = "A pure rust implementation of the GKLS function generator"
+homepage = "https://github.com/jonboh/gkls-rs"
+repository = "https://github.com/jonboh/gkls-rs"
+license = "MIT"
+keywords = ["optimization", "math", "science"]
+categories = ["science"]
+
+exclude = ["assets/*"]
 
 [dependencies]
 rand = "0.8"
