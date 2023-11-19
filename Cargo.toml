@@ -22,3 +22,8 @@ name = "plot_function"
 path = "examples/plot_function.rs"
 required-features = ["examples"]
 
+[[example]]
+name = "single_evaluation"
+path = "examples/single_evaluation.rs"
+required-features = ["examples"]
+

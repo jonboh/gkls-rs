@@ -2,7 +2,7 @@ use plotters::prelude::*;
 
 use gkls_rs::{Options, Problem};
 
-const OUT_FOLDER: &str = "example_output";
+const OUT_FOLDER: &str = "assets";
 const NF: usize = 9;
 
 fn min_max(numbers: &[f64]) -> Option<(f64, f64)> {
