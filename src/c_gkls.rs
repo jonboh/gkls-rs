@@ -47,6 +47,9 @@ mod cbinding {
         /// Hessian of the D2-type test function
         pub(super) fn GKLS_D2_hessian(x: *const f64, g: *const *mut f64) -> i32;
 
+        pub(super) fn ranf_start(seed: i64);
+        pub(super) fn ranf_array(aa: *mut f64, n: i32);
+
         static mut GKLS_dim: usize;
         static mut GKLS_num_minima: usize;
         static mut GKLS_global_dist: f64;
@@ -268,4 +271,27 @@ impl CGKLSProblem {
         Self::deallocate_problem(pointers_guard);
         result
     }
+}
+
+/// Generate the first n random numbers of the generator
+/// This function always restarts the generator
+#[allow(dead_code)]
+pub(crate) fn ranf_gen(n: usize, seed: u64) -> Vec<f64> {
+    if n < 1009 {
+        panic!("The number of random numbers must be at least 1009")
+    }
+    let _lock = GLOBAL_CVARIABLES.lock().unwrap();
+    let mut nums = vec![f64::NAN; n];
+    unsafe {
+        cbinding::ranf_start(
+            seed.try_into()
+                .expect("n over the limit of i64 is not supported"),
+        );
+        cbinding::ranf_array(
+            nums.as_mut_ptr(),
+            n.try_into()
+                .expect("n over the limit of i64 is not supported"),
+        );
+    }
+    nums
 }

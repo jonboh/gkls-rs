@@ -2,7 +2,9 @@ use std::f64::consts::PI;
 
 use itertools::izip;
 
+#[cfg(feature = "test_cbinding")]
 pub(crate) mod c_gkls;
+
 pub(crate) mod ranf;
 
 pub struct Options {
@@ -246,7 +248,7 @@ impl Problem {
         minima.peak[0] = 0.0;
         minima.peak[1] = 0.0;
         for i in 2..num_minima {
-            let random = rng.gen::<f64>();
+            let random = rng.gen();
             temp_d1 = norm(&minima.local_min[0], &minima.local_min[i]);
             temp_min = (minima.rho[i] - temp_d1).mul_add(minima.rho[i] - temp_d1, minima.f[0]);
             temp_d1 = (1.0 + random) * minima.rho[i];
@@ -309,12 +311,12 @@ impl Problem {
         let seed = (nf - 1) + (num_minima - 1) * 100 + dim * 1_000_000;
         let mut rng = ranf::Ranf::new(100, 37, 70, 1009, 1009, seed.try_into().unwrap());
         for i in 0..dim {
-            let r = rng.gen::<f64>();
+            let r = rng.gen();
             minima.local_min[0][i] = r.mul_add(domain.right[i] - domain.left[i], domain.left[i]);
         }
         rng.reset();
         minima.f[0] = options.paraboloid_min;
-        let w_phi = PI * rng.gen::<f64>();
+        let w_phi = PI * rng.gen();
         minima.local_min[1][0] = global_dist.mul_add(f64::cos(w_phi), minima.local_min[0][0]);
         if minima.local_min[1][0] > domain.right[0] - options.precision
             || minima.local_min[1][0] < domain.left[0] + options.precision
@@ -323,7 +325,7 @@ impl Problem {
         }
         sin_phi = f64::sin(w_phi);
         for j in 1..dim - 1 {
-            let w_2 = PI * rng.gen::<f64>();
+            let w_2 = PI * rng.gen();
             minima.local_min[1][j] =
                 (global_dist * f64::cos(2.0 * w_2)).mul_add(sin_phi, minima.local_min[0][j]);
             if minima.local_min[1][j] > domain.right[j] - options.precision
@@ -346,7 +348,7 @@ impl Problem {
             minima.w_rho[i] = 0.99;
         }
         minima.w_rho[1] = 1.0;
-        let delta = options.delta_max_value * rng.gen::<f64>();
+        let delta = options.delta_max_value * rng.gen();
         while let CoincidenceCondition::LocalMinCoincidence
         | CoincidenceCondition::ParabolaMinCoincidence =
             coincidence_check(&minima, num_minima, options.precision)
@@ -357,7 +359,7 @@ impl Problem {
                     rng.reset();
                     for j in 0..dim {
                         minima.local_min[i][j] = rng
-                            .gen::<f64>()
+                            .gen()
                             .mul_add(domain.right[j] - domain.left[j], domain.left[j]);
                     }
                     if (global_radius + gap) - norm(&minima.local_min[i], &minima.local_min[1])
@@ -763,6 +765,7 @@ impl Problem {
         dq_jk
     }
 
+    #[must_use]
     pub fn d_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
         let mut g = vec![f64::NAN; self.dim];
         for (i, g_) in g.iter_mut().enumerate() {
@@ -773,6 +776,8 @@ impl Problem {
         }
         Some(g)
     }
+
+    #[must_use]
     pub fn d2_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
         let mut g = vec![f64::NAN; self.dim];
         for (i, g_) in g.iter_mut().enumerate() {
@@ -783,6 +788,8 @@ impl Problem {
         }
         Some(g)
     }
+
+    #[must_use]
     pub fn d2_hessian(&self, x: &[f64]) -> Option<Vec<Vec<f64>>> {
         let mut h = vec![vec![f64::NAN; self.dim]; self.dim];
         for (i, h_) in h.iter_mut().enumerate() {
@@ -797,6 +804,7 @@ impl Problem {
     }
 }
 
+#[cfg(feature = "test_cbinding")]
 #[cfg(test)]
 mod tests {
     use rand::rngs::StdRng;

@@ -1,4 +1,4 @@
-pub struct Ranf {
+pub(crate) struct Ranf {
     long_lag: usize,
     short_lag: usize,
     _separation: usize,
@@ -17,7 +17,7 @@ impl Default for Ranf {
 
 impl Ranf {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         long_lag: usize,
         short_lag: usize,
         _separation: usize,
@@ -176,12 +176,12 @@ impl Ranf {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.ranf_array();
         self.counter = 0;
     }
 
-    pub fn gen<T>(&mut self) -> f64 {
+    pub(crate) fn gen(&mut self) -> f64 {
         if self.counter == self.size {
             self.reset();
         }
@@ -195,4 +195,36 @@ fn mod_sum(x: f64, y: f64) -> f64 {
     (x + y) - (x + y).floor()
 }
 
-// TODO: test ranf with c implementation
+#[cfg(feature = "test_cbinding")]
+#[cfg(test)]
+mod tests {
+    use crate::c_gkls;
+
+    use super::Ranf;
+
+    #[test]
+    fn ranf_default() {
+        let mut generator = Ranf::default();
+        let n = 10000;
+        let gen_nums: Vec<f64> = (0..n).map(|_| generator.gen()).collect();
+        let c_nums = c_gkls::ranf_gen(n, 42); // let seed=42 is the default in the Rust implementation
+        assert_eq!(gen_nums, c_nums)
+    }
+
+    #[test]
+    fn ranf_problems() {
+        for nf in (1..100).step_by(7) {
+            for dim in (1..100).step_by(7) {
+                for num_minima in (1..142).step_by(7) {
+                    let seed = (nf - 1) + (num_minima - 1) * 100 + dim * 1_000_000;
+                    let mut generator = Ranf::new(100, 37, 70, 1009, 1009, seed);
+                    let n = 2000;
+                    let gen_nums: Vec<f64> = (0..n).map(|_| generator.gen()).collect();
+                    let c_nums = c_gkls::ranf_gen(n, seed.try_into().unwrap());
+                    // assert_eq!(gen_nums, c_nums)
+                    assert_eq!(c_nums, gen_nums)
+                }
+            }
+        }
+    }
+}
