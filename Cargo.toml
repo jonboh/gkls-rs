@@ -3,14 +3,22 @@ name = "gkls-rs"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 rand = "0.8"
-rand_chacha = "0.3"
 itertools = "0.11"
-plotly = "0.8"
 lazy_static = "1.4"
+plotters = {version="0.3", optional=true}
 
 [build-dependencies]
 cc = "1.0"
+
+[features]
+default = []
+test_cbinding = []
+examples = ["plotters"]
+
+[[example]]
+name = "plot_function"
+path = "examples/plot_function.rs"
+required-features = ["examples"]
+
