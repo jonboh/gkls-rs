@@ -17,12 +17,12 @@ Here is the function from the original paper reproduced with `gkls-rs`:
 ![Function 9 of the D-type](./assets/nf9.svg "Function 9 of the D-type")
 
 The figure is generated with the binary in `examples/plot_function`.
-```
+```bash
 cargo run --example plot_function --features examples
 ```
 
 See `examples/single_evaluation.rs` for a simple usage example:
-```
+```rust
 // Generate a problem
 let problem = Problem::new(9, Options::default(), 2, 10, -1.0, 1. / 3., 2. / 3.)
     .expect("Problem has to be valid");
@@ -34,7 +34,7 @@ println!("f({x:?})={y}");
 println!("f'({x:?})={dy:?}");
 ```
 Run the example with:
-```
+```bash
 cargo run --example single_evaluation --features examples
 ```
 You should get something like:
