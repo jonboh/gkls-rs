@@ -1,18 +1,35 @@
+#![warn(
+    missing_debug_implementations,
+    missing_docs,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_extern_crates,
+    unused_import_braces,
+    unused_qualifications,
+    unused_results
+)]
+//! `gkls-rs` is a pure Rust implementation of the algorithm described in
+//! [Software for Generation of Classes of Test Functions with Known Local and Global Minima for Global Optimization](https://arxiv.org/abs/1103.2695).
+
 use std::f64::consts::PI;
 
 use itertools::izip;
+use thiserror::Error;
 
 #[cfg(feature = "test_cbinding")]
 pub(crate) mod c_gkls;
 
 pub(crate) mod ranf;
 
+#[derive(Clone, Debug)]
 pub struct Options {
-    max_value: f64,
-    precision: f64,
-    paraboloid_min: f64,
-    _global_min_value: f64,
-    delta_max_value: f64,
+    /// Penalty value of the generated function if x is not in D
+    pub max_value: f64,
+    /// Value of the machine zero in the floating-point arithmetic
+    pub precision: f64,
+    /// Default value of the paraboloid minimum
+    pub paraboloid_min: f64,
+    pub delta_max_value: f64,
 }
 
 impl Default for Options {
@@ -21,26 +38,36 @@ impl Default for Options {
             max_value: 1e+100,
             precision: 1e-10,
             paraboloid_min: 0.0,
-            _global_min_value: -1.0,
             delta_max_value: 10.0,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum GKLSError {
+    #[error("Input had incorrect dimension")]
     Dim,
+    #[error("Invalid number of minima")]
     NumMinima,
+    #[error("Function number outside range")]
     FuncNumber,
+    #[error("Evaluation point outside problem boundary?")]
     Boundary,
+    #[error("Invalid GlobalMinValue")]
     GlobalMinValue,
+    #[error("Invalid GlobalDist")]
     GlobalDist,
+    #[error("Invalid GlobalRadius")]
     GlobalRadius,
+    #[error("Out of memory")]
     Memory,
+    #[error("Error in derivative evaluation")]
     DerivEval,
+    #[error("FloatingPoint error")]
     FloatingPoint,
 }
 
+#[derive(Debug, Clone)]
 struct Minima {
     local_min: Vec<Vec<f64>>,
     f: Vec<f64>,
@@ -49,6 +76,7 @@ struct Minima {
     rho: Vec<f64>,
 }
 
+#[derive(Debug, Clone)]
 struct GlobalMinima {
     num_global_minima: usize,
     gm_index: Vec<usize>,
@@ -60,8 +88,12 @@ enum CoincidenceCondition {
     Ok,
 }
 
+/// Defines the domain of the optimization problem
+#[derive(Debug, Clone)]
 pub struct Domain {
+    /// Left boundary vector of D
     left: Vec<f64>,
+    /// Right boundary vector of D
     right: Vec<f64>,
 }
 
@@ -74,6 +106,7 @@ impl Domain {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Problem {
     options: Options,
     domain: Domain,
@@ -277,6 +310,7 @@ impl Problem {
         Ok(())
     }
 
+    /// Generate a new test function
     pub fn new(
         nf: usize,
         options: Options,
@@ -398,6 +432,7 @@ impl Problem {
         })
     }
 
+    /// Evaluates the generated function of the ND-type (non-differentiable)
     #[must_use]
     pub fn nd_func(&self, x: &[f64]) -> f64 {
         let mut index: usize = 0;
@@ -435,6 +470,7 @@ impl Problem {
             .mul_add(norm_.powi(2), self.minima.f[index])
     }
 
+    /// Evaluates the generated function of the D-type (continuously differentiable)
     #[must_use]
     pub fn d_func(&self, x: &[f64]) -> f64 {
         let mut norm_: f64;
@@ -476,6 +512,7 @@ impl Problem {
         ) + self.minima.f[index]
     }
 
+    /// Evaluates the generated function of the D2-type (twice continuously differentiable)
     #[must_use]
     pub fn d2_func(&self, x: &[f64]) -> f64 {
         let mut norm_: f64;
@@ -527,6 +564,8 @@ impl Problem {
         (term1 + term2 + term3) * norm_.powi(3) / rho + term4 + self.minima.f[index]
     }
 
+    /// Evaluates the first order partial derivative of D-type function with respet to the
+    /// variable wiht index `var_j`
     #[must_use]
     pub fn d_deriv(&self, var_j: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
@@ -578,6 +617,8 @@ impl Problem {
         )
     }
 
+    /// Evaluates the first order partial derivative of D2-type function with respect
+    /// to the variable with index `var_j`
     #[must_use]
     pub fn d2_deriv1(&self, var_j: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
@@ -641,6 +682,8 @@ impl Problem {
         )
     }
 
+    /// Evaluates the second order partial derivative of D2-type function with respect
+    /// to the variables with indexes `var_j` and `var_k`
     #[must_use]
     pub fn d2_deriv2(&self, var_j: usize, var_k: usize, x: &[f64]) -> f64 {
         let mut var_j = var_j;
@@ -765,6 +808,7 @@ impl Problem {
         dq_jk
     }
 
+    /// Evaluates the gradient of the D-type function
     #[must_use]
     pub fn d_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
         let mut g = vec![f64::NAN; self.dim];
@@ -777,6 +821,7 @@ impl Problem {
         Some(g)
     }
 
+    /// Evaluates the gradient of the D2-type function
     #[must_use]
     pub fn d2_gradient(&self, x: &[f64]) -> Option<Vec<f64>> {
         let mut g = vec![f64::NAN; self.dim];
@@ -789,6 +834,7 @@ impl Problem {
         Some(g)
     }
 
+    /// Evaluates the hessian of the D2-type function
     #[must_use]
     pub fn d2_hessian(&self, x: &[f64]) -> Option<Vec<Vec<f64>>> {
         let mut h = vec![vec![f64::NAN; self.dim]; self.dim];
